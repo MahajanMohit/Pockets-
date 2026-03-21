@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Reusable steps are inlined per job (GitHub Actions has no native step reuse)
+# gradle-wrapper.jar is not in the repo, so we install Gradle 8.10.2 directly
+# via gradle/actions/setup-gradle and run 'gradle wrapper' to generate it.
+
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # Job 1: Debug APK — runs on every push / PR
@@ -24,23 +28,25 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
-      # Installs Android SDK command-line tools and adds sdkmanager to PATH
+      # Install Android SDK CLI tools so sdkmanager is on PATH
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK platform 35
+      - name: Install Android platform 35 + build-tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Setup Gradle
+      # Install Gradle 8.10.2 directly (avoids needing gradle-wrapper.jar in repo)
+      - name: Setup Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: wrapper
+          gradle-version: "8.10.2"
+
+      # Generate gradle-wrapper.jar so ./gradlew works
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.10.2
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
@@ -54,7 +60,7 @@ jobs:
           retention-days: 30
 
   # ────────────────────────────────────────────────────────────────────────────
-  # Job 2: Release APK — runs only on main / master / workflow_dispatch
+  # Job 2: Release APK — main / master / workflow_dispatch only
   # ────────────────────────────────────────────────────────────────────────────
   build-release:
     name: Build Release APK
@@ -80,19 +86,19 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK platform 35
+      - name: Install Android platform 35 + build-tools
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Setup Gradle
+      - name: Setup Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: wrapper
+          gradle-version: "8.10.2"
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.10.2
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
 
       # Unsigned release (always)
       - name: Build unsigned release APK
@@ -106,7 +112,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      # Signed release (only when KEYSTORE_BASE64 secret is present)
+      # Signed release — only when KEYSTORE_BASE64 secret is configured
       - name: Decode keystore
         if: env.HAS_KEYSTORE == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > zendeck-release.jks
