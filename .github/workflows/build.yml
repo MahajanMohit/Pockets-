@@ -6,73 +6,73 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Reusable steps are inlined per job (GitHub Actions has no native step reuse)
+# gradle-wrapper.jar is not in the repo, so we install Gradle 8.10.2 directly
+# via gradle/actions/setup-gradle and run 'gradle wrapper' to generate it.
+
 jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: Debug APK — runs on every push / PR
+  # ────────────────────────────────────────────────────────────────────────────
   build-debug:
     name: Build Debug APK
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Java 17 (required by AGP 8.x) ────────────────────────────────────
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: "17"
           distribution: "temurin"
 
-      # ── 3. Gradle setup + caching ────────────────────────────────────────────
-      #   gradle/actions/setup-gradle handles:
-      #   - Downloading gradle-wrapper.jar when missing
-      #   - Build-scan publishing (disabled by default)
-      #   - Gradle home caching
-      - name: Setup Gradle
+      # Install Android SDK CLI tools so sdkmanager is on PATH
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 35 + build-tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      # Install Gradle 8.10.2 directly (avoids needing gradle-wrapper.jar in repo)
+      - name: Setup Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: wrapper   # reads version from gradle-wrapper.properties
+          gradle-version: "8.10.2"
 
-      # ── 4. Android SDK: ensure platform 35 + build-tools are installed ───────
-      - name: Install Android SDK components
-        run: |
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "platform-tools"
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+      # Generate gradle-wrapper.jar so ./gradlew works
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.10.2
 
-      # ── 5. Create local.properties pointing at the runner SDK ────────────────
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      # ── 6. Make gradlew executable ───────────────────────────────────────────
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      # ── 7. Build debug APK ───────────────────────────────────────────────────
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # ── 8. Upload debug APK artifact ─────────────────────────────────────────
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: ZenDeck-debug-${{ github.run_number }}-${{ github.sha }}
+          name: ZenDeck-debug-${{ github.run_number }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
 
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: Release APK — main / master / workflow_dispatch only
+  # ────────────────────────────────────────────────────────────────────────────
   build-release:
-    name: Build Release APK (unsigned)
+    name: Build Release APK
     runs-on: ubuntu-latest
-    # Only run on the main/master branch or when triggered manually
     if: |
       github.ref == 'refs/heads/main' ||
       github.ref == 'refs/heads/master' ||
       github.event_name == 'workflow_dispatch'
 
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -83,80 +83,42 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
-      - name: Setup Gradle
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform 35 + build-tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: wrapper
+          gradle-version: "8.10.2"
 
-      - name: Install Android SDK components
-        run: |
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "platform-tools"
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.10.2
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      - name: Build release APK (unsigned)
+      # Unsigned release (always)
+      - name: Build unsigned release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Upload release APK
+      - name: Upload unsigned release APK
         uses: actions/upload-artifact@v4
         with:
-          name: ZenDeck-release-unsigned-${{ github.run_number }}-${{ github.sha }}
+          name: ZenDeck-release-unsigned-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
 
-  build-signed-release:
-    name: Build Signed Release APK
-    runs-on: ubuntu-latest
-    # Only runs when signing secrets are present AND on main/master/workflow_dispatch
-    if: |
-      secrets.KEYSTORE_BASE64 != '' &&
-      (github.ref == 'refs/heads/main' ||
-       github.ref == 'refs/heads/master' ||
-       github.event_name == 'workflow_dispatch')
-    needs: build-release
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: "17"
-          distribution: "temurin"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: wrapper
-
-      - name: Install Android SDK components
-        run: |
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Write local.properties
-        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      # Decode the base64-encoded keystore from GitHub secret
+      # Signed release — only when KEYSTORE_BASE64 secret is configured
       - name: Decode keystore
-        run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > ${{ github.workspace }}/zendeck-release.jks
+        if: env.HAS_KEYSTORE == 'true'
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > zendeck-release.jks
 
-      # Inject signing config into app/build.gradle.kts via env vars
       - name: Build signed release APK
+        if: env.HAS_KEYSTORE == 'true'
         run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
           SIGNING_STORE_FILE: ${{ github.workspace }}/zendeck-release.jks
@@ -165,9 +127,10 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Upload signed release APK
+        if: env.HAS_KEYSTORE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ZenDeck-release-signed-${{ github.run_number }}-${{ github.sha }}
+          name: ZenDeck-release-signed-${{ github.run_number }}
           path: app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
