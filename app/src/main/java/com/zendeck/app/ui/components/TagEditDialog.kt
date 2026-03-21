@@ -1,6 +1,7 @@
 package com.zendeck.app.ui.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.theme.*
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TagEditDialog(
     link: LinkItem,
