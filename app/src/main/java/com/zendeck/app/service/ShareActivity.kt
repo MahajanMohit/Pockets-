@@ -7,7 +7,6 @@ import androidx.activity.ComponentActivity
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.lifecycle.lifecycleScope
 import com.zendeck.app.data.repository.LinkRepository
-import com.zendeck.app.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 

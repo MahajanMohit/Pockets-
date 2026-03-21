@@ -20,13 +20,41 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Read signing config from env vars (injected by GitHub Actions)
+    val storeFile = System.getenv("SIGNING_STORE_FILE")
+    val storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+    val keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+    val keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+    val hasSigningConfig = storeFile != null && storePassword != null &&
+            keyAlias != null && keyPassword != null
+
+    if (hasSigningConfig) {
+        signingConfigs {
+            create("release") {
+                this.storeFile = file(storeFile!!)
+                this.storePassword = storePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasSigningConfig) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            isDebuggable = true
         }
     }
 
