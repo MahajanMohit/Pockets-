@@ -24,13 +24,17 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
+      # Installs Android SDK command-line tools and adds sdkmanager to PATH
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: wrapper
-
-      - name: Install Android SDK platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -51,9 +55,6 @@ jobs:
 
   # ────────────────────────────────────────────────────────────────────────────
   # Job 2: Release APK — runs only on main / master / workflow_dispatch
-  # Produces an unsigned APK (always) and a signed APK (when secrets exist).
-  # Secrets cannot be referenced in job-level `if`, so the signing steps
-  # use `if: env.HAS_KEYSTORE == 'true'` instead.
   # ────────────────────────────────────────────────────────────────────────────
   build-release:
     name: Build Release APK
@@ -76,13 +77,16 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: wrapper
-
-      - name: Install Android SDK platform 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Write local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -90,7 +94,7 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      # ── Unsigned release (always runs) ──────────────────────────────────────
+      # Unsigned release (always)
       - name: Build unsigned release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
@@ -102,7 +106,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
-      # ── Signed release (only when KEYSTORE_BASE64 secret is set) ────────────
+      # Signed release (only when KEYSTORE_BASE64 secret is present)
       - name: Decode keystore
         if: env.HAS_KEYSTORE == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > zendeck-release.jks
