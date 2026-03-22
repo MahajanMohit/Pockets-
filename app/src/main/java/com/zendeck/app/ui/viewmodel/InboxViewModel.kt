@@ -6,11 +6,18 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.zendeck.app.data.memory.ReadingMemoryStore
 import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.domain.model.ReadingRating
+import com.zendeck.app.service.LlmSummarizationService
 import com.zendeck.app.service.ReadingAdvisorService
+import com.zendeck.app.worker.ModelDownloadWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +33,36 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = LinkRepository.getInstance(application)
     private val memoryStore = ReadingMemoryStore.getInstance(application)
+
+    // ── Model availability ────────────────────────────────────────────────────
+
+    private val _modelAvailable = MutableStateFlow(true)
+    val modelAvailable: StateFlow<Boolean> = _modelAvailable.asStateFlow()
+
+    /** Re-checks whether the Gemma model file is present on disk. */
+    fun checkModelAvailability() {
+        _modelAvailable.value = LlmSummarizationService.hasModel(getApplication())
+    }
+
+    /**
+     * Enqueues a background [ModelDownloadWorker] to fetch the Gemma model.
+     * Requires an unmetered (WiFi) connection and won't re-enqueue if already running.
+     */
+    fun enqueueModelDownload() {
+        val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.UNMETERED)
+                    .build()
+            )
+            .build()
+        WorkManager.getInstance(getApplication())
+            .enqueueUniqueWork(
+                ModelDownloadWorker.WORK_NAME,
+                ExistingWorkPolicy.KEEP,
+                request
+            )
+    }
 
     // ── Base link flows ───────────────────────────────────────────────────────
 
