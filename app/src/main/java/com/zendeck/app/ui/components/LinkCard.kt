@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +47,14 @@ fun LinkCard(
 ) {
     val haptic = LocalHapticFeedback.current
     val c = LocalZenDeckColors.current
+    // Use a mutable ref so the pointerInput coroutine always calls the latest lambdas
+    // even though it starts only once (key = Unit).
+    val latestOnTap = remember { androidx.compose.runtime.mutableStateOf(onTap) }
+    val latestOnDoubleTap = remember { androidx.compose.runtime.mutableStateOf(onDoubleTap) }
+    val latestOnLongPress = remember { androidx.compose.runtime.mutableStateOf(onLongPress) }
+    latestOnTap.value = onTap
+    latestOnDoubleTap.value = onDoubleTap
+    latestOnLongPress.value = onLongPress
     val urgencyColor by animateColorAsState(
         targetValue = urgencyBorderColor(link.urgencyFraction),
         animationSpec = tween(durationMillis = 800),
@@ -62,11 +71,11 @@ fun LinkCard(
             )
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onTap() },
-                    onDoubleTap = { onDoubleTap() },
+                    onTap = { latestOnTap.value() },
+                    onDoubleTap = { latestOnDoubleTap.value() },
                     onLongPress = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onLongPress()
+                        latestOnLongPress.value()
                     }
                 )
             },
