@@ -83,6 +83,14 @@ android {
     }
 }
 
+// Kotlin 2.0+ merged kotlin-stdlib-jdk7/jdk8 into kotlin-stdlib.
+// Some older dependencies (e.g. mediapipe) still pull them in transitively,
+// causing "Platform declaration clash" for BigDecimal/BigInteger operators.
+configurations.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
+}
+
 dependencies {
     implementation(libs.material)
     implementation(libs.androidx.core.ktx)
