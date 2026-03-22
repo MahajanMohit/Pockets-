@@ -7,9 +7,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
@@ -33,16 +33,17 @@ import coil.compose.AsyncImage
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.theme.*
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LinkCard(
     link: LinkItem,
     modifier: Modifier = Modifier,
     isExpanded: Boolean = false,
     onTap: () -> Unit = {},
+    onDoubleTap: () -> Unit = {},
     onLongPress: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
+    val c = LocalZenDeckColors.current
     val urgencyColor by animateColorAsState(
         targetValue = urgencyBorderColor(link.urgencyFraction),
         animationSpec = tween(durationMillis = 800),
@@ -57,15 +58,18 @@ fun LinkCard(
                 color = if (isExpanded) urgencyColor else urgencyColor.copy(alpha = 0.7f),
                 shape = RoundedCornerShape(12.dp)
             )
-            .combinedClickable(
-                onClick = onTap,
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onLongPress()
-                }
-            ),
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onDoubleTap = { onDoubleTap() },
+                    onLongPress = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress()
+                    }
+                )
+            },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = CardBackground)
+        colors = CardDefaults.cardColors(containerColor = c.cardBackground)
     ) {
         Column(
             modifier = Modifier
@@ -89,7 +93,7 @@ fun LinkCard(
                 Text(
                     text = link.domain,
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
+                    color = c.textSecondary,
                     modifier = Modifier.weight(1f)
                 )
                 if (link.isPinned) {
@@ -110,7 +114,7 @@ fun LinkCard(
             Text(
                 text = link.title,
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
+                color = c.textPrimary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -121,7 +125,7 @@ fun LinkCard(
                 Text(
                     text = link.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
+                    color = c.textSecondary,
                     maxLines = if (isExpanded) 4 else 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -143,14 +147,13 @@ fun LinkCard(
             ) {
                 Column {
                     Spacer(Modifier.height(10.dp))
-                    HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+                    HorizontalDivider(color = c.divider, thickness = 0.5.dp)
                     Spacer(Modifier.height(8.dp))
 
                     val isXSite = link.domain == "x.com" || link.domain == "twitter.com"
 
                     when {
                         isXSite -> {
-                            // X/Twitter can't be scraped — prompt to tag instead
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     Icons.Default.Label,
@@ -171,7 +174,7 @@ fun LinkCard(
                                 Text(
                                     text = bullet,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = SlateGrayLight,
+                                    color = c.slateGrayLight,
                                     modifier = Modifier.padding(bottom = 3.dp)
                                 )
                             }
@@ -180,7 +183,7 @@ fun LinkCard(
                             Text(
                                 text = "No summary available",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = TextDisabled
+                                color = c.textDisabled
                             )
                         }
                     }
@@ -194,9 +197,9 @@ fun LinkCard(
 
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "Tap again to open  →",
+                        text = "Double-tap to open  →",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextDisabled,
+                        color = c.textDisabled,
                         textAlign = TextAlign.End,
                         modifier = Modifier.fillMaxWidth()
                     )

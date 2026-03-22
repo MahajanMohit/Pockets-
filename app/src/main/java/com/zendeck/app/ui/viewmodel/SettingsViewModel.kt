@@ -3,6 +3,7 @@ package com.zendeck.app.ui.viewmodel
 import android.app.Application
 import android.net.Uri
 import android.util.Log
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.lifecycle.AndroidViewModel
@@ -26,6 +27,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     companion object {
         val KEY_TTL_HOURS = longPreferencesKey("ttl_hours")
+        val KEY_DARK_MODE = booleanPreferencesKey("dark_mode")
         val TTL_OPTIONS = listOf(24L, 48L, 72L, 168L)
         private const val TAG = "SettingsViewModel"
     }
@@ -34,8 +36,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         .map { prefs -> prefs[KEY_TTL_HOURS] ?: 72L }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 72L)
 
+    val darkMode: StateFlow<Boolean> = dataStore.data
+        .map { prefs -> prefs[KEY_DARK_MODE] ?: true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     fun setTtlHours(hours: Long) = viewModelScope.launch {
         dataStore.edit { prefs -> prefs[KEY_TTL_HOURS] = hours }
+    }
+
+    fun setDarkMode(enabled: Boolean) = viewModelScope.launch {
+        dataStore.edit { prefs -> prefs[KEY_DARK_MODE] = enabled }
     }
 
     /** Export all saved links as JSON to a URI chosen by the user (SAF). */

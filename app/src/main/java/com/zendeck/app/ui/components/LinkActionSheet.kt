@@ -26,20 +26,20 @@ fun LinkActionSheet(
     onRestore: () -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
+    val c = LocalZenDeckColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = CardBackground,
+        containerColor = c.cardBackground,
         dragHandle = {
             Box(
                 modifier = Modifier
                     .padding(vertical = 12.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .let { it },
+                    .size(width = 36.dp, height = 4.dp),
                 content = {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         shape = MaterialTheme.shapes.extraLarge,
-                        color = CardBorderDefault
+                        color = c.cardBorder
                     ) {}
                 }
             )
@@ -50,25 +50,24 @@ fun LinkActionSheet(
                 .fillMaxWidth()
                 .padding(bottom = 32.dp)
         ) {
-            // Link title as sheet header
             Text(
                 text = link.title,
                 style = MaterialTheme.typography.labelMedium,
-                color = TextDisabled,
+                color = c.textDisabled,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
             )
-            HorizontalDivider(color = DividerColor, modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(color = c.divider, modifier = Modifier.padding(vertical = 8.dp))
 
-            SheetAction(Icons.Default.OpenInBrowser, "Open Link", TextPrimary) {
+            SheetAction(Icons.Default.OpenInBrowser, "Open Link", c.textPrimary) {
                 onOpen(); onDismiss()
             }
-            SheetAction(Icons.Default.Label, "Edit Tags & Pin", TextPrimary) {
+            SheetAction(Icons.Default.Label, "Edit Tags & Pin", c.textPrimary) {
                 onEditTags(); onDismiss()
             }
             if (!isArchived) {
-                SheetAction(Icons.Default.Archive, "Move to Archive", TextSecondary) {
+                SheetAction(Icons.Default.Archive, "Move to Archive", c.textSecondary) {
                     onArchive(); onDismiss()
                 }
             } else {

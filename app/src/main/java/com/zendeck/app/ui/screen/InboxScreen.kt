@@ -19,7 +19,8 @@ import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.components.LinkActionSheet
 import com.zendeck.app.ui.components.LinkCard
 import com.zendeck.app.ui.components.TagEditDialog
-import com.zendeck.app.ui.theme.*
+import com.zendeck.app.ui.theme.LocalZenDeckColors
+import com.zendeck.app.ui.theme.UrgencyFresh
 import com.zendeck.app.ui.viewmodel.InboxViewModel
 
 @Composable
@@ -62,12 +63,10 @@ fun InboxScreen(
                             link = link,
                             isExpanded = isExpanded,
                             onTap = {
-                                if (isExpanded) {
-                                    inboxViewModel.openInCustomTab(context, link.url)
-                                } else {
-                                    // Collapse any other card, expand this one
-                                    expandedLinkId = link.id
-                                }
+                                expandedLinkId = if (isExpanded) null else link.id
+                            },
+                            onDoubleTap = {
+                                inboxViewModel.openInCustomTab(context, link.url)
                             },
                             onLongPress = { actionSheetLink = link }
                         )
@@ -122,6 +121,7 @@ private fun InboxEmptyState() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        val c = LocalZenDeckColors.current
         Text(
             text = "✓",
             style = MaterialTheme.typography.displayLarge,
@@ -131,14 +131,14 @@ private fun InboxEmptyState() {
         Text(
             text = "Inbox Zero",
             style = MaterialTheme.typography.headlineMedium,
-            color = TextPrimary,
+            color = c.textPrimary,
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Share any link to ZenDeck to start saving.\nTap a card to expand — tap again to open.",
+            text = "Share any link to ZenDeck to start saving.\nTap a card to expand · double-tap to open.",
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
+            color = c.textSecondary,
             textAlign = TextAlign.Center
         )
     }

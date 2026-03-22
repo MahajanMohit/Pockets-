@@ -27,17 +27,18 @@ fun TagEditDialog(
     var tagInput by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf(link.tags.toMutableList()) }
     var isPinned by remember { mutableStateOf(link.isPinned) }
+    val c = LocalZenDeckColors.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CardBackground,
-        titleContentColor = TextPrimary,
-        textContentColor = TextSecondary,
+        containerColor = c.cardBackground,
+        titleContentColor = c.textPrimary,
+        textContentColor = c.textSecondary,
         title = {
             Text(
                 text = "Edit Link",
                 style = MaterialTheme.typography.titleLarge,
-                color = TextPrimary
+                color = c.textPrimary
             )
         },
         text = {
@@ -50,14 +51,14 @@ fun TagEditDialog(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pin",
-                        tint = if (isPinned) AccentTeal else TextDisabled,
+                        tint = if (isPinned) AccentTeal else c.textDisabled,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = "Pin to top",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
+                        color = c.textSecondary,
                         modifier = Modifier.weight(1f)
                     )
                     Switch(
@@ -73,12 +74,12 @@ fun TagEditDialog(
                 OutlinedTextField(
                     value = tagInput,
                     onValueChange = { tagInput = it },
-                    placeholder = { Text("Add tag…", color = TextDisabled) },
+                    placeholder = { Text("Add tag…", color = c.textDisabled) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = AccentTeal,
-                        unfocusedBorderColor = CardBorderDefault,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
+                        unfocusedBorderColor = c.cardBorder,
+                        focusedTextColor = c.textPrimary,
+                        unfocusedTextColor = c.textPrimary,
                         cursorColor = AccentTeal
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -115,7 +116,7 @@ fun TagEditDialog(
                                         Icon(
                                             Icons.Default.Close,
                                             contentDescription = "Remove",
-                                            tint = TextSecondary,
+                                            tint = c.textSecondary,
                                             modifier = Modifier.size(12.dp)
                                         )
                                     }
@@ -131,7 +132,6 @@ fun TagEditDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                // Auto-commit any text the user typed but didn't confirm with keyboard Done
                 val pending = tagInput.trim().lowercase()
                 val finalTags = if (pending.isNotBlank() && !tags.contains(pending))
                     tags + pending
@@ -144,7 +144,7 @@ fun TagEditDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
+                Text("Cancel", color = c.textSecondary)
             }
         }
     )

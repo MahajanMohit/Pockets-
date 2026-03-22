@@ -16,7 +16,7 @@ import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.components.LinkActionSheet
 import com.zendeck.app.ui.components.LinkCard
 import com.zendeck.app.ui.components.TagEditDialog
-import com.zendeck.app.ui.theme.*
+import com.zendeck.app.ui.theme.LocalZenDeckColors
 import com.zendeck.app.ui.viewmodel.InboxViewModel
 
 @Composable
@@ -31,11 +31,12 @@ fun ArchiveScreen(
     var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
 
+    val c = LocalZenDeckColors.current
     Column(modifier = modifier.fillMaxSize()) {
         Text(
             text = "Archive",
             style = MaterialTheme.typography.headlineMedium,
-            color = TextPrimary,
+            color = c.textPrimary,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
         )
 
@@ -44,7 +45,7 @@ fun ArchiveScreen(
                 Text(
                     text = "Nothing archived yet.\nLong-press any inbox card to archive it.",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
+                    color = c.textSecondary,
                     textAlign = TextAlign.Center
                 )
             }
@@ -59,8 +60,10 @@ fun ArchiveScreen(
                         link = link,
                         isExpanded = isExpanded,
                         onTap = {
-                            if (isExpanded) viewModel.openInCustomTab(context, link.url)
-                            else expandedLinkId = link.id
+                            expandedLinkId = if (isExpanded) null else link.id
+                        },
+                        onDoubleTap = {
+                            viewModel.openInCustomTab(context, link.url)
                         },
                         onLongPress = { actionSheetLink = link }
                     )

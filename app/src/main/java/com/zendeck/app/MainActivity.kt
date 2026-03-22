@@ -14,20 +14,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.ui.screen.ArchiveScreen
 import com.zendeck.app.ui.screen.InboxScreen
 import com.zendeck.app.ui.screen.SettingsScreen
-import com.zendeck.app.ui.theme.ZenDeckTheme
 import com.zendeck.app.ui.theme.AccentTeal
-import com.zendeck.app.ui.theme.OledBlack
-import com.zendeck.app.ui.theme.TextSecondary
+import com.zendeck.app.ui.theme.LocalZenDeckColors
+import com.zendeck.app.ui.theme.ZenDeckTheme
+import com.zendeck.app.ui.viewmodel.SettingsViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            ZenDeckTheme {
+            val settingsViewModel: SettingsViewModel = viewModel()
+            val darkMode by settingsViewModel.darkMode.collectAsStateWithLifecycle()
+            ZenDeckTheme(useDarkTheme = darkMode) {
                 ZenDeckApp()
             }
         }
@@ -43,12 +47,13 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @Composable
 private fun ZenDeckApp() {
     var selectedTab by remember { mutableStateOf(Tab.Inbox) }
+    val c = LocalZenDeckColors.current
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = OledBlack,
+        containerColor = c.background,
         bottomBar = {
-            NavigationBar(containerColor = OledBlack) {
+            NavigationBar(containerColor = c.background) {
                 Tab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
@@ -58,8 +63,8 @@ private fun ZenDeckApp() {
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = AccentTeal,
                             selectedTextColor = AccentTeal,
-                            unselectedIconColor = TextSecondary,
-                            unselectedTextColor = TextSecondary,
+                            unselectedIconColor = c.textSecondary,
+                            unselectedTextColor = c.textSecondary,
                             indicatorColor = AccentTeal.copy(alpha = 0.12f)
                         )
                     )
