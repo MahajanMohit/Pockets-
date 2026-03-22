@@ -64,13 +64,33 @@ class LlmSummarizationService(private val context: Context) {
 
     /**
      * Sentence-extraction fallback used when no LLM model is installed.
-     * Picks the 3 most informative sentences from the body text.
+     *
+     * Scores each sentence and picks the 3 best:
+     * - Must be 50–250 chars (filters single-word labels and run-on strings)
+     * - Must contain at least 8 words
+     * - Must not match common boilerplate patterns (subscribe, cookie notice, ads, etc.)
      */
     private fun fallbackSummarize(text: String): String {
+        val boilerplate = listOf(
+            "subscribe", "newsletter", "sign up", "sign in", "log in", "login",
+            "register", "privacy policy", "terms of service", "terms and conditions",
+            "all rights reserved", "copyright ©", "cookie", "advertisement",
+            "sponsored", "click here", "read more", "learn more", "find out more",
+            "follow us", "share this", "tweet", "facebook", "instagram",
+            "javascript", "enable javascript", "browser", "reload", "refresh"
+        )
+
         return text
             .split(Regex("""(?<=[.!?])\s+"""))
             .map { it.trim() }
-            .filter { it.length in 40..220 }
+            .filter { sentence ->
+                val lower = sentence.lowercase()
+                val wordCount = sentence.split(Regex("\\s+")).size
+                sentence.length in 50..250 &&
+                wordCount >= 8 &&
+                boilerplate.none { lower.contains(it) } &&
+                !sentence.startsWith("©")
+            }
             .take(3)
             .joinToString("\n") { "• $it" }
     }
