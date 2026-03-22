@@ -72,6 +72,15 @@ class LinkRepository private constructor(context: Context) {
     suspend fun archiveExpired() =
         dao.archiveExpiredLinks(System.currentTimeMillis())
 
+    suspend fun restoreLink(id: String) =
+        dao.restoreLink(id)
+
+    suspend fun getAllLinks(): List<LinkItem> =
+        dao.getAllLinks().map { it.toDomain() }
+
+    suspend fun importLinks(links: List<LinkItem>) =
+        links.forEach { dao.insertLink(LinkItemEntity.fromDomain(it)) }
+
     companion object {
         @Volatile
         private var INSTANCE: LinkRepository? = null

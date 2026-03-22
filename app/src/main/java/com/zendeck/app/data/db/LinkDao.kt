@@ -44,6 +44,12 @@ interface LinkDao {
     @Query("DELETE FROM link_items WHERE id = :id")
     suspend fun deleteLink(id: String)
 
+    @Query("UPDATE link_items SET isArchived = 0 WHERE id = :id")
+    suspend fun restoreLink(id: String)
+
+    @Query("SELECT * FROM link_items")
+    suspend fun getAllLinks(): List<LinkItemEntity>
+
     @Query("SELECT COUNT(*) FROM link_items WHERE isArchived = 0")
     fun getActiveLinkCount(): Flow<Int>
 }

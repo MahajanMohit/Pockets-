@@ -1,5 +1,9 @@
 package com.zendeck.app.domain.model
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+
+@Serializable
 data class LinkItem(
     val id: String,
     val url: String,
@@ -15,7 +19,7 @@ data class LinkItem(
     val faviconUrl: String
 ) {
     /** 0.0 = just added, 1.0 = exactly expired */
-    val urgencyFraction: Float
+    @Transient val urgencyFraction: Float
         get() {
             val now = System.currentTimeMillis()
             val total = (expiresAt - addedAt).toFloat()
@@ -23,13 +27,13 @@ data class LinkItem(
             return (elapsed / total).coerceIn(0f, 1f)
         }
 
-    val summaryBullets: List<String>
+    @Transient val summaryBullets: List<String>
         get() = summary
             .split("\n")
             .filter { it.isNotBlank() }
             .take(3)
 
-    val timeUntilExpiry: String
+    @Transient val timeUntilExpiry: String
         get() {
             val now = System.currentTimeMillis()
             val remaining = expiresAt - now

@@ -6,6 +6,9 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,63 +19,140 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.domain.model.LinkItem
-import com.zendeck.app.ui.components.SwipeableCard
+import com.zendeck.app.ui.components.LinkActionSheet
+import com.zendeck.app.ui.components.LinkCard
 import com.zendeck.app.ui.components.TagEditDialog
-import com.zendeck.app.ui.theme.*
+import com.zendeck.app.ui.theme.LocalZenDeckColors
+import com.zendeck.app.ui.theme.UrgencyFresh
+import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.viewmodel.InboxViewModel
-import com.zendeck.app.ui.viewmodel.SettingsViewModel
 
 @Composable
 fun InboxScreen(
     modifier: Modifier = Modifier,
-    inboxViewModel: InboxViewModel = viewModel(),
-    settingsViewModel: SettingsViewModel = viewModel()
+    inboxViewModel: InboxViewModel = viewModel()
 ) {
-    val links by inboxViewModel.topFiveLinks.collectAsStateWithLifecycle()
-    val showSummary by settingsViewModel.showSummary.collectAsStateWithLifecycle()
+    val links by inboxViewModel.filteredInboxLinks.collectAsStateWithLifecycle()
+    val searchQuery by inboxViewModel.inboxSearch.collectAsStateWithLifecycle()
+    val ratings by inboxViewModel.inboxRatings.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val c = LocalZenDeckColors.current
 
+    var expandedLinkId by remember { mutableStateOf<String?>(null) }
+    var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
     val dismissedIds = remember { mutableStateListOf<String>() }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-    ) {
+    LaunchedEffect(links) {
+        if (expandedLinkId != null && links.none { it.id == expandedLinkId }) {
+            expandedLinkId = null
+        }
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        // ── Search bar ────────────────────────────────────────────────────────
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { inboxViewModel.setInboxSearch(it) },
+            placeholder = {
+                Text("Search links…", color = c.textDisabled,
+                    style = MaterialTheme.typography.bodyMedium)
+            },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null,
+                    tint = c.textDisabled, modifier = Modifier.size(20.dp))
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { inboxViewModel.setInboxSearch("") }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear",
+                            tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AccentTeal,
+                unfocusedBorderColor = c.cardBorder,
+                focusedTextColor = c.textPrimary,
+                unfocusedTextColor = c.textPrimary,
+                cursorColor = AccentTeal
+            ),
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        // ── Content ───────────────────────────────────────────────────────────
         if (links.isEmpty()) {
-            InboxEmptyState()
+            if (searchQuery.isNotEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "No links match \"$searchQuery\"",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = c.textSecondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                InboxEmptyState()
+            }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(
-                    items = links,
-                    key = { it.id }
-                ) { link ->
+                items(links, key = { it.id }) { link ->
                     AnimatedVisibility(
                         visible = link.id !in dismissedIds,
                         exit = shrinkVertically() + fadeOut()
                     ) {
-                        SwipeableCard(
+                        val isExpanded = expandedLinkId == link.id
+                        LinkCard(
                             link = link,
-                            showSummary = showSummary,
-                            onOpen = {
+                            isExpanded = isExpanded,
+                            aiRating = ratings[link.id],
+                            onTap = {
+                                expandedLinkId = if (isExpanded) null else link.id
+                            },
+                            onDoubleTap = {
                                 inboxViewModel.openInCustomTab(context, link.url)
+                                inboxViewModel.recordLinkOpen(link)
                             },
-                            onArchive = {
-                                dismissedIds.add(link.id)
-                                inboxViewModel.archiveLink(link.id)
-                            },
-                            onLongPress = {
-                                editingLink = link
-                            }
+                            onLongPress = { actionSheetLink = link }
                         )
                     }
                 }
+                item { Spacer(Modifier.height(8.dp)) }
             }
         }
+    }
+
+    // Long-press action sheet
+    actionSheetLink?.let { link ->
+        LinkActionSheet(
+            link = link,
+            isArchived = false,
+            onDismiss = { actionSheetLink = null },
+            onOpen = {
+                inboxViewModel.openInCustomTab(context, link.url)
+                inboxViewModel.recordLinkOpen(link)
+                actionSheetLink = null
+            },
+            onEditTags = {
+                editingLink = link
+                actionSheetLink = null
+            },
+            onArchive = {
+                dismissedIds.add(link.id)
+                inboxViewModel.archiveLink(link.id)
+                inboxViewModel.recordLinkSkip(link)
+                if (expandedLinkId == link.id) expandedLinkId = null
+                actionSheetLink = null
+            }
+        )
     }
 
     // Tag edit dialog
@@ -90,6 +170,7 @@ fun InboxScreen(
 
 @Composable
 private fun InboxEmptyState() {
+    val c = LocalZenDeckColors.current
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -97,23 +178,19 @@ private fun InboxEmptyState() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "✓",
-            style = MaterialTheme.typography.displayLarge,
-            color = UrgencyFresh
-        )
+        Text("✓", style = MaterialTheme.typography.displayLarge, color = UrgencyFresh)
         Spacer(Modifier.height(16.dp))
         Text(
             text = "Inbox Zero",
             style = MaterialTheme.typography.headlineMedium,
-            color = TextPrimary,
+            color = c.textPrimary,
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Share any link to ZenDeck to start reading.",
+            text = "Share any link to ZenDeck to start saving.\nTap to expand · double-tap to open.",
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
+            color = c.textSecondary,
             textAlign = TextAlign.Center
         )
     }
