@@ -130,7 +130,15 @@ fun TagEditDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(tags, isPinned) }) {
+            TextButton(onClick = {
+                // Auto-commit any text the user typed but didn't confirm with keyboard Done
+                val pending = tagInput.trim().lowercase()
+                val finalTags = if (pending.isNotBlank() && !tags.contains(pending))
+                    tags + pending
+                else
+                    tags.toList()
+                onSave(finalTags, isPinned)
+            }) {
                 Text("Save", color = AccentTeal)
             }
         },

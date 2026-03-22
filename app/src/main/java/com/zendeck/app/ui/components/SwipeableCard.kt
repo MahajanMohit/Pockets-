@@ -91,7 +91,7 @@ fun SwipeableCard(
             modifier = Modifier
                 .offset { IntOffset(animatedOffset.roundToInt(), 0) }
                 .combinedClickable(
-                    onClick = {},
+                    onClick = { onOpen() },
                     onLongClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         onLongPress()
