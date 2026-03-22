@@ -168,7 +168,7 @@ fun LinkCard(
                     val isXSite = link.domain == "x.com" || link.domain == "twitter.com"
 
                     when {
-                        isXSite -> {
+                        isXSite && link.tags.isEmpty() -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     Icons.Default.Label,
