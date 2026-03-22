@@ -53,6 +53,13 @@ interface LinkDao {
     @Query("SELECT * FROM link_items")
     suspend fun getAllLinks(): List<LinkItemEntity>
 
+    // One-shot (non-Flow) queries used by the LAN server (called from NanoHTTPD threads)
+    @Query("SELECT * FROM link_items WHERE isArchived = 0 ORDER BY isPinned DESC, expiresAt ASC")
+    suspend fun getActiveLinksOnce(): List<LinkItemEntity>
+
+    @Query("SELECT * FROM link_items WHERE isArchived = 1 ORDER BY expiresAt DESC")
+    suspend fun getArchivedLinksOnce(): List<LinkItemEntity>
+
     @Query("SELECT COUNT(*) FROM link_items WHERE isArchived = 0")
     fun getActiveLinkCount(): Flow<Int>
 

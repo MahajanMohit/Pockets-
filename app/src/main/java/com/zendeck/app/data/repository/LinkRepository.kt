@@ -89,6 +89,13 @@ class LinkRepository private constructor(context: Context) {
     suspend fun getAllLinks(): List<LinkItem> =
         dao.getAllLinks().map { it.toDomain() }
 
+    /** One-shot reads for the LAN server (called via runBlocking from NanoHTTPD threads). */
+    suspend fun getInboxLinksSnapshot(): List<LinkItem> =
+        dao.getActiveLinksOnce().map { it.toDomain() }
+
+    suspend fun getArchivedLinksSnapshot(): List<LinkItem> =
+        dao.getArchivedLinksOnce().map { it.toDomain() }
+
     suspend fun importLinks(links: List<LinkItem>) =
         links.forEach { dao.insertLink(LinkItemEntity.fromDomain(it)) }
 

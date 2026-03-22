@@ -128,6 +128,9 @@ dependencies {
     // Kotlin Serialization
     implementation(libs.kotlinx.serialization.json)
 
+    // NanoHTTPD – embedded LAN server
+    implementation(libs.nanohttpd)
+
     // Coil (image loading)
     implementation(libs.coil.compose)
 
