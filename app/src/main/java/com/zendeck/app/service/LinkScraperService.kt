@@ -18,6 +18,17 @@ object LinkScraperService {
     private const val BODY_TEXT_LIMIT = 4000
     private const val TIMEOUT_MS = 10_000
 
+    // Sites that require JavaScript or serve only boilerplate via Jsoup
+    private val KNOWN_JS_DOMAINS = setOf(
+        "youtube.com", "youtu.be",
+        "twitter.com", "x.com",
+        "instagram.com", "threads.net",
+        "facebook.com", "fb.com",
+        "tiktok.com",
+        "reddit.com", "redd.it",
+        "linkedin.com"
+    )
+
     // Phrases that indicate the site requires JavaScript to render — Jsoup can't scrape these.
     private val JS_GATE_PHRASES = listOf(
         "javascript is disabled",
@@ -41,6 +52,21 @@ object LinkScraperService {
                 .get()
 
             val domain = extractDomain(url)
+
+            // Known JS-heavy domains — Jsoup only gets homepage boilerplate, skip body
+            if (KNOWN_JS_DOMAINS.any { domain == it || domain.endsWith(".$it") }) {
+                val title = doc.select("meta[property=og:title]").attr("content")
+                    .ifBlank { doc.title() }.ifBlank { domain }
+                val description = doc.select("meta[property=og:description]").attr("content")
+                return@withContext ScrapedContent(
+                    title = title,
+                    description = description,
+                    bodyText = "",
+                    domain = domain,
+                    faviconUrl = "https://$domain/favicon.ico"
+                )
+            }
+
             val title = doc.title().ifBlank {
                 doc.select("meta[property=og:title]").attr("content").ifBlank { domain }
             }

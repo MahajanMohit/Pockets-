@@ -3,6 +3,9 @@ package com.zendeck.app.ui.screen
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +19,7 @@ import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.components.LinkActionSheet
 import com.zendeck.app.ui.components.LinkCard
 import com.zendeck.app.ui.components.TagEditDialog
+import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.theme.LocalZenDeckColors
 import com.zendeck.app.ui.viewmodel.InboxViewModel
 
@@ -24,29 +28,69 @@ fun ArchiveScreen(
     modifier: Modifier = Modifier,
     viewModel: InboxViewModel = viewModel()
 ) {
-    val links by viewModel.archivedLinks.collectAsStateWithLifecycle()
+    val links by viewModel.filteredArchivedLinks.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.archiveSearch.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val c = LocalZenDeckColors.current
 
     var expandedLinkId by remember { mutableStateOf<String?>(null) }
     var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
 
-    val c = LocalZenDeckColors.current
     Column(modifier = modifier.fillMaxSize()) {
         Text(
             text = "Archive",
             style = MaterialTheme.typography.headlineMedium,
             color = c.textPrimary,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, top = 16.dp, bottom = 4.dp)
         )
 
+        // ── Search bar ────────────────────────────────────────────────────────
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { viewModel.setArchiveSearch(it) },
+            placeholder = {
+                Text("Search archive…", color = c.textDisabled,
+                    style = MaterialTheme.typography.bodyMedium)
+            },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null,
+                    tint = c.textDisabled, modifier = Modifier.size(20.dp))
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.setArchiveSearch("") }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear",
+                            tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AccentTeal,
+                unfocusedBorderColor = c.cardBorder,
+                focusedTextColor = c.textPrimary,
+                unfocusedTextColor = c.textPrimary,
+                cursorColor = AccentTeal
+            ),
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        // ── Content ───────────────────────────────────────────────────────────
         if (links.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "Nothing archived yet.\nLong-press any inbox card to archive it.",
+                    text = if (searchQuery.isNotEmpty())
+                        "No archived links match \"$searchQuery\""
+                    else
+                        "Nothing archived yet.\nLong-press any inbox card to archive it.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.textSecondary,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(32.dp)
                 )
             }
         } else {

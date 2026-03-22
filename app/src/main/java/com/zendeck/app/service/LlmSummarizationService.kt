@@ -14,8 +14,16 @@ class LlmSummarizationService(private val context: Context) {
 
     companion object {
         private const val TAG = "LlmSummarizationService"
-        private const val MODEL_FILENAME = "gemma-2b-it-cpu-int4.bin"
         private const val MAX_TOKENS = 512
+
+        // Prefer higher-quality models if present; fall back to smaller ones
+        private val MODEL_FILENAMES = listOf(
+            "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B – best quality for 12GB RAM
+            "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B – fast, good quality
+            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B – original fallback
+        )
+
+        private val SEARCH_DIRS = listOf("/sdcard/Download", "/data/local/tmp")
     }
 
     private fun initialize() {
@@ -35,25 +43,33 @@ class LlmSummarizationService(private val context: Context) {
     }
 
     private fun findModelPath(): String? {
-        // Check common locations for the model file
-        val locations = listOf(
-            File(context.filesDir, MODEL_FILENAME),
-            File("/sdcard/Download/$MODEL_FILENAME"),
-            File("/data/local/tmp/$MODEL_FILENAME")
-        )
-        return locations.firstOrNull { it.exists() }?.absolutePath
+        val searchDirs = listOf(context.filesDir) +
+            SEARCH_DIRS.map { File(it) }
+        for (name in MODEL_FILENAMES) {
+            for (dir in searchDirs) {
+                val f = File(dir, name)
+                if (f.exists()) {
+                    Log.i(TAG, "Found model: ${f.absolutePath}")
+                    return f.absolutePath
+                }
+            }
+        }
+        return null
     }
 
-    suspend fun summarize(text: String): String {
+    /**
+     * @param text  Extracted article body text
+     * @param memoryContext  Short string from ReadingMemoryStore describing user interests
+     */
+    suspend fun summarize(text: String, memoryContext: String = ""): String {
         if (text.isBlank()) return ""
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
                 val inference = llm ?: return@withContext fallbackSummarize(text)
-                val prompt = buildPrompt(text)
+                val prompt = buildPrompt(text, memoryContext)
                 val result = inference.generateResponse(prompt)
                 val cleaned = cleanSummary(result)
-                // If LLM returned garbage (empty after cleaning), fall back
                 if (cleaned.isBlank()) fallbackSummarize(text) else cleaned
             } catch (e: Exception) {
                 Log.w(TAG, "Summarization failed, using fallback: ${e.message}")
@@ -63,21 +79,43 @@ class LlmSummarizationService(private val context: Context) {
     }
 
     /**
-     * Sentence-extraction fallback used when no LLM model is installed.
+     * Sentence-extraction fallback when no LLM model is installed.
      *
-     * Scores each sentence and picks the 3 best:
-     * - Must be 50–250 chars (filters single-word labels and run-on strings)
-     * - Must contain at least 8 words
-     * - Must not match common boilerplate patterns (subscribe, cookie notice, ads, etc.)
+     * Scores each sentence and picks up to 3 best:
+     * - 60–280 chars (avoids labels and run-ons)
+     * - At least 10 words
+     * - Not matching any boilerplate phrase
      */
     private fun fallbackSummarize(text: String): String {
         val boilerplate = listOf(
+            // Generic web boilerplate
             "subscribe", "newsletter", "sign up", "sign in", "log in", "login",
-            "register", "privacy policy", "terms of service", "terms and conditions",
+            "register", "create account", "forgot password",
+            "privacy policy", "terms of service", "terms and conditions",
             "all rights reserved", "copyright ©", "cookie", "advertisement",
             "sponsored", "click here", "read more", "learn more", "find out more",
-            "follow us", "share this", "tweet", "facebook", "instagram",
-            "javascript", "enable javascript", "browser", "reload", "refresh"
+            "by continuing",
+            // Social sharing / engagement
+            "share your videos", "share with friends", "share with family",
+            "friends, family", "share this", "follow us", "follow me",
+            "like and subscribe", "hit the bell", "comment below",
+            "check out my", "for more videos", "don't miss", "watch now",
+            "stream now", "listen now", "watch later", "add to queue",
+            "tweet", "facebook", "instagram", "patreon", "merch",
+            // Ads / affiliate
+            "affiliate", "discount code", "use code", "sponsored by",
+            "this post contains", "as an amazon associate",
+            // App install prompts
+            "get it on google play", "download the app", "get the app",
+            "available on", "play store", "app store",
+            // Discovery / pagination
+            "you might also like", "related articles", "recommended for you",
+            "view all", "see all", "load more", "show more",
+            // Comments section
+            "add a comment", "report abuse", "flag as",
+            // Tech boilerplate
+            "javascript", "enable javascript", "browser", "reload", "refresh",
+            "noscript"
         )
 
         return text
@@ -86,26 +124,40 @@ class LlmSummarizationService(private val context: Context) {
             .filter { sentence ->
                 val lower = sentence.lowercase()
                 val wordCount = sentence.split(Regex("\\s+")).size
-                sentence.length in 50..250 &&
-                wordCount >= 8 &&
+                sentence.length in 60..280 &&
+                wordCount >= 10 &&
                 boilerplate.none { lower.contains(it) } &&
-                !sentence.startsWith("©")
+                !sentence.startsWith("©") &&
+                !sentence.startsWith("@")
             }
             .take(3)
             .joinToString("\n") { "• $it" }
     }
 
-    private fun buildPrompt(text: String): String = """
-        <start_of_turn>user
-        Summarize the following article in exactly 3 concise bullet points.
-        Each bullet must start with "• ".
-        Keep each bullet under 20 words.
-        Only output the 3 bullets, nothing else.
+    private fun buildPrompt(text: String, memoryContext: String): String {
+        val contextLine = if (memoryContext.isNotBlank())
+            "Reader profile: $memoryContext\n\n"
+        else ""
 
-        Article: $text
-        <end_of_turn>
-        <start_of_turn>model
-    """.trimIndent()
+        // Truncate body to fit model context window (keep first 3000 chars)
+        val truncated = text.take(3000)
+
+        return """
+            <start_of_turn>user
+            ${contextLine}Summarize this article in exactly 3 concise bullet points.
+            Rules:
+            - Each bullet starts with "• "
+            - Maximum 20 words per bullet
+            - Focus on key facts, not filler or opinions
+            - Only output the 3 bullets, nothing else
+
+            Article:
+            $truncated
+            <end_of_turn>
+            <start_of_turn>model
+            •
+        """.trimIndent()
+    }
 
     private fun cleanSummary(raw: String): String {
         return raw.lines()

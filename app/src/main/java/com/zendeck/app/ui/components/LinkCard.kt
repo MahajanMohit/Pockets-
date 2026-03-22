@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.zendeck.app.domain.model.LinkItem
+import com.zendeck.app.domain.model.ReadingRating
 import com.zendeck.app.ui.theme.*
 
 @Composable
@@ -38,6 +39,7 @@ fun LinkCard(
     link: LinkItem,
     modifier: Modifier = Modifier,
     isExpanded: Boolean = false,
+    aiRating: ReadingRating? = null,
     onTap: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
     onLongPress: () -> Unit = {}
@@ -103,6 +105,10 @@ fun LinkCard(
                         tint = AccentTeal,
                         modifier = Modifier.size(14.dp)
                     )
+                    Spacer(Modifier.width(4.dp))
+                }
+                aiRating?.let {
+                    RatingBadge(it)
                     Spacer(Modifier.width(4.dp))
                 }
                 TTLBadge(link.urgencyFraction, link.timeUntilExpiry)
@@ -206,6 +212,23 @@ fun LinkCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RatingBadge(rating: ReadingRating) {
+    val color = when (rating) {
+        ReadingRating.DEFINITELY_READ -> AccentTeal
+        ReadingRating.GOOD_TO_READ   -> UrgencyWarning
+        ReadingRating.CAN_SKIP       -> TextDisabled
+    }
+    Surface(shape = RoundedCornerShape(4.dp), color = color.copy(alpha = 0.15f)) {
+        Text(
+            text = "${rating.icon} ${rating.shortLabel}",
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+        )
     }
 }
 
