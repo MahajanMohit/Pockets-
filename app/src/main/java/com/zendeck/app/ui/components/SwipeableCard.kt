@@ -18,16 +18,16 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-private val ArchiveColor = Color(0xFFF59E0B)   // amber — swipe to archive
-private val RestoreColor = Color(0xFF10B981)   // teal — swipe to restore
+private val ArchiveColor = Color(0xFFF59E0B)   // amber — swipe right to archive
+private val RestoreColor = Color(0xFF10B981)   // teal  — swipe left to restore
 
 /**
- * Wraps [content] with a horizontal swipe-to-dismiss gesture.
+ * Swipe directions follow the spatial layout of the tabs:
+ *   Inbox (left tab)  → swipe RIGHT  → moves item to Archive (right tab)
+ *   Archive (right tab) → swipe LEFT → moves item back to Inbox (left tab)
  *
- * @param onSwipeToArchive Called when the user swipes left (EndToStart) — archive the item.
- *                         Pass null to disable this direction.
- * @param onSwipeToRestore Called when the user swipes right (StartToEnd) — restore the item.
- *                         Pass null to disable this direction.
+ * @param onSwipeToArchive Triggered on swipe RIGHT (StartToEnd) in the Inbox.
+ * @param onSwipeToRestore Triggered on swipe LEFT  (EndToStart) in the Archive.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,8 +39,8 @@ fun SwipeableCard(
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
-                SwipeToDismissBoxValue.EndToStart -> onSwipeToArchive != null
-                SwipeToDismissBoxValue.StartToEnd -> onSwipeToRestore != null
+                SwipeToDismissBoxValue.StartToEnd -> onSwipeToArchive != null  // swipe right → archive
+                SwipeToDismissBoxValue.EndToStart -> onSwipeToRestore != null  // swipe left  → restore
                 SwipeToDismissBoxValue.Settled -> false
             }
         },
@@ -49,20 +49,20 @@ fun SwipeableCard(
 
     LaunchedEffect(state.currentValue) {
         when (state.currentValue) {
-            SwipeToDismissBoxValue.EndToStart -> onSwipeToArchive?.invoke()
-            SwipeToDismissBoxValue.StartToEnd -> onSwipeToRestore?.invoke()
+            SwipeToDismissBoxValue.StartToEnd -> onSwipeToArchive?.invoke()
+            SwipeToDismissBoxValue.EndToStart -> onSwipeToRestore?.invoke()
             SwipeToDismissBoxValue.Settled -> Unit
         }
     }
 
     SwipeToDismissBox(
         state = state,
-        enableDismissFromStartToEnd = onSwipeToRestore != null,
-        enableDismissFromEndToStart = onSwipeToArchive != null,
+        enableDismissFromStartToEnd = onSwipeToArchive != null,  // right-swipe enabled in Inbox
+        enableDismissFromEndToStart = onSwipeToRestore != null,  // left-swipe enabled in Archive
         backgroundContent = {
             val direction = state.dismissDirection
-            val isArchiving = direction == SwipeToDismissBoxValue.EndToStart
-            val isRestoring = direction == SwipeToDismissBoxValue.StartToEnd
+            val isArchiving = direction == SwipeToDismissBoxValue.StartToEnd
+            val isRestoring = direction == SwipeToDismissBoxValue.EndToStart
 
             val targetColor = when {
                 isArchiving -> ArchiveColor.copy(alpha = 0.85f)
@@ -86,7 +86,9 @@ fun SwipeableCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(bgColor)
                     .padding(horizontal = 24.dp),
-                contentAlignment = if (isArchiving) Alignment.CenterEnd else Alignment.CenterStart
+                // Archive icon on LEFT (revealed as user swipes right)
+                // Restore icon on RIGHT (revealed as user swipes left)
+                contentAlignment = if (isArchiving) Alignment.CenterStart else Alignment.CenterEnd
             ) {
                 when {
                     isArchiving -> Icon(
