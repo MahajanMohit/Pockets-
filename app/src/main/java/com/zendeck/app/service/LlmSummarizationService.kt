@@ -34,31 +34,18 @@ class LlmSummarizationService(private val context: Context) {
 
     private fun initialize() {
         if (isInitialized) return
-        val modelPath = findModelPath() ?: return
-
-        // Try GPU first (faster for GPU-quantized models), fall back to CPU
-        if (tryInitialize(modelPath, useGpu = true)) return
-        tryInitialize(modelPath, useGpu = false)
-    }
-
-    private fun tryInitialize(modelPath: String, useGpu: Boolean): Boolean {
-        return try {
-            val backend = if (useGpu)
-                LlmInference.LlmInferenceOptions.Backend.GPU
-            else
-                LlmInference.LlmInferenceOptions.Backend.CPU
+        try {
+            val modelPath = findModelPath() ?: return
+            // GPU vs CPU backend is determined automatically by the model file format
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelPath)
                 .setMaxTokens(MAX_TOKENS)
-                .setPreferredBackend(backend)
                 .build()
             llm = LlmInference.createFromOptions(context, options)
             isInitialized = true
-            Log.i(TAG, "LLM initialized on ${if (useGpu) "GPU" else "CPU"} from: $modelPath")
-            true
+            Log.i(TAG, "LLM initialized from: $modelPath")
         } catch (e: Exception) {
-            Log.w(TAG, "LLM init failed (${if (useGpu) "GPU" else "CPU"}): ${e.message}")
-            false
+            Log.w(TAG, "LLM initialization failed, summaries disabled: ${e.message}")
         }
     }
 
