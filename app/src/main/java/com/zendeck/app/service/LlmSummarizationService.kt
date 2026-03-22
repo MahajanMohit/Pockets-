@@ -20,25 +20,45 @@ class LlmSummarizationService(private val context: Context) {
         private val MODEL_FILENAMES = listOf(
             "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B – best quality for 12GB RAM
             "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B – fast, good quality
-            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B – original fallback
+            "gemma-2b-it-gpu-int4.bin",     // Gemma 2B – GPU quantized
+            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B – CPU fallback
         )
 
-        private val SEARCH_DIRS = listOf("/sdcard/Download", "/data/local/tmp")
+        private val SEARCH_DIRS = listOf(
+            "/storage/emulated/0/Download/gemma",  // actual path from device
+            "/sdcard/Download/gemma",               // symlink variant
+            "/sdcard/Download",
+            "/data/local/tmp",
+        )
     }
 
     private fun initialize() {
         if (isInitialized) return
-        try {
-            val modelPath = findModelPath() ?: return
+        val modelPath = findModelPath() ?: return
+
+        // Try GPU first (faster for GPU-quantized models), fall back to CPU
+        if (tryInitialize(modelPath, useGpu = true)) return
+        tryInitialize(modelPath, useGpu = false)
+    }
+
+    private fun tryInitialize(modelPath: String, useGpu: Boolean): Boolean {
+        return try {
+            val backend = if (useGpu)
+                LlmInference.LlmInferenceOptions.Backend.GPU
+            else
+                LlmInference.LlmInferenceOptions.Backend.CPU
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelPath)
                 .setMaxTokens(MAX_TOKENS)
+                .setPreferredBackend(backend)
                 .build()
             llm = LlmInference.createFromOptions(context, options)
             isInitialized = true
-            Log.i(TAG, "LLM initialized from: $modelPath")
+            Log.i(TAG, "LLM initialized on ${if (useGpu) "GPU" else "CPU"} from: $modelPath")
+            true
         } catch (e: Exception) {
-            Log.w(TAG, "LLM initialization failed, summaries disabled: ${e.message}")
+            Log.w(TAG, "LLM init failed (${if (useGpu) "GPU" else "CPU"}): ${e.message}")
+            false
         }
     }
 
