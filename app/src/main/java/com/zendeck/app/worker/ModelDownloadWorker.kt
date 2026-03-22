@@ -57,16 +57,24 @@ class ModelDownloadWorker(
         // Poll until DownloadManager reports success or failure
         while (true) {
             delay(POLL_INTERVAL_MS)
+            // Use explicit typed variables to avoid Kotlin 2.0 type-inference issues
+            // that arise when mixing Int and Long inside a listOf() and then destructuring.
             val cursor = dm.query(DownloadManager.Query().setFilterById(downloadId))
-            val (status, reason, downloaded, total) = cursor?.use { c ->
-                if (!c.moveToFirst()) return@use null
-                listOf(
-                    c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
-                    c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
-                    c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)),
-                    c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)),
-                )
-            } ?: return Result.failure(workDataOf(KEY_ERROR to "Download record lost"))
+                ?: return Result.failure(workDataOf(KEY_ERROR to "Download record lost"))
+            if (!cursor.moveToFirst()) {
+                cursor.close()
+                return Result.failure(workDataOf(KEY_ERROR to "Download record lost"))
+            }
+            var status = 0
+            var reason = 0
+            var downloaded = 0L
+            var total = 0L
+            cursor.use { c ->
+                status   = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                reason   = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                downloaded = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                total      = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            }
 
             when (status) {
                 DownloadManager.STATUS_SUCCESSFUL -> {
@@ -79,7 +87,7 @@ class ModelDownloadWorker(
                     return Result.failure(workDataOf(KEY_ERROR to "DownloadManager failed (reason=$reason)"))
                 }
                 DownloadManager.STATUS_RUNNING -> {
-                    if (total > 0) {
+                    if (total > 0L) {
                         val pct = (downloaded * 100L / total).toInt()
                         Log.d(TAG, "Downloading model… $pct% ($downloaded / $total bytes)")
                     }
