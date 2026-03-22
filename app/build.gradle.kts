@@ -83,12 +83,20 @@ android {
     }
 }
 
-// Kotlin 2.0+ merged kotlin-stdlib-jdk7/jdk8 into kotlin-stdlib.
-// Some older dependencies (e.g. mediapipe) still pull them in transitively,
+// Kotlin 2.0 merged kotlin-stdlib-jdk7/jdk8 into kotlin-stdlib.
+// Older transitive deps (e.g. mediapipe) still pull in the old artifacts,
 // causing "Platform declaration clash" for BigDecimal/BigInteger operators.
+// Forcing all stdlib variants to 2.0.21 ensures jdk8 is the empty stub
+// that ships with 2.0 (no duplicate declarations).
 configurations.configureEach {
-    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
-    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
+    resolutionStrategy {
+        force(
+            "org.jetbrains.kotlin:kotlin-stdlib:2.0.21",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.0.21",
+            "org.jetbrains.kotlin:kotlin-stdlib-common:2.0.21",
+        )
+    }
 }
 
 dependencies {
