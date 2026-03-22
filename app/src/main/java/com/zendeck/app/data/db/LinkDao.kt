@@ -26,11 +26,14 @@ interface LinkDao {
     @Query("SELECT * FROM link_items WHERE id = :id")
     suspend fun getLinkById(id: String): LinkItemEntity?
 
-    @Query("UPDATE link_items SET isArchived = 1 WHERE expiresAt <= :now AND isArchived = 0")
+    @Query("SELECT id FROM link_items WHERE url = :url LIMIT 1")
+    suspend fun findIdByUrl(url: String): String?
+
+    @Query("UPDATE link_items SET isArchived = 1, archivedAt = :now WHERE expiresAt <= :now AND isArchived = 0")
     suspend fun archiveExpiredLinks(now: Long)
 
-    @Query("UPDATE link_items SET isArchived = 1 WHERE id = :id")
-    suspend fun archiveLink(id: String)
+    @Query("UPDATE link_items SET isArchived = 1, archivedAt = :now WHERE id = :id")
+    suspend fun archiveLink(id: String, now: Long)
 
     @Query("UPDATE link_items SET isPinned = :pinned WHERE id = :id")
     suspend fun updatePinned(id: String, pinned: Boolean)
@@ -44,7 +47,7 @@ interface LinkDao {
     @Query("DELETE FROM link_items WHERE id = :id")
     suspend fun deleteLink(id: String)
 
-    @Query("UPDATE link_items SET isArchived = 0 WHERE id = :id")
+    @Query("UPDATE link_items SET isArchived = 0, archivedAt = 0 WHERE id = :id")
     suspend fun restoreLink(id: String)
 
     @Query("SELECT * FROM link_items")
@@ -52,4 +55,7 @@ interface LinkDao {
 
     @Query("SELECT COUNT(*) FROM link_items WHERE isArchived = 0")
     fun getActiveLinkCount(): Flow<Int>
+
+    @Query("DELETE FROM link_items WHERE isArchived = 1 AND archivedAt > 0 AND (archivedAt + :ttlMs) <= :now")
+    suspend fun deleteExpiredArchived(now: Long, ttlMs: Long)
 }

@@ -26,6 +26,10 @@ class LinkRepository private constructor(context: Context) {
 
     fun getActiveLinkCount(): Flow<Int> = dao.getActiveLinkCount()
 
+    /**
+     * Inserts a link. Returns the ID of the newly created or already-existing item.
+     * If the URL already exists, skips insertion and returns the existing ID.
+     */
     suspend fun addLink(
         url: String,
         title: String,
@@ -33,7 +37,10 @@ class LinkRepository private constructor(context: Context) {
         domain: String,
         faviconUrl: String,
         ttlHours: Long = 72L
-    ): String {
+    ): Pair<String, Boolean> {
+        // Duplicate check — return existing ID without re-inserting
+        dao.findIdByUrl(url)?.let { existingId -> return Pair(existingId, false) }
+
         val id = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
         val entity = LinkItemEntity(
@@ -48,17 +55,18 @@ class LinkRepository private constructor(context: Context) {
             expiresAt = now + ttlHours * 3_600_000L,
             isArchived = false,
             domain = domain,
-            faviconUrl = faviconUrl
+            faviconUrl = faviconUrl,
+            archivedAt = 0L
         )
         dao.insertLink(entity)
-        return id
+        return Pair(id, true)
     }
 
     suspend fun updateSummary(id: String, summary: String) =
         dao.updateSummary(id, summary)
 
     suspend fun archiveLink(id: String) =
-        dao.archiveLink(id)
+        dao.archiveLink(id, System.currentTimeMillis())
 
     suspend fun togglePin(id: String, pinned: Boolean) =
         dao.updatePinned(id, pinned)
@@ -71,6 +79,9 @@ class LinkRepository private constructor(context: Context) {
 
     suspend fun archiveExpired() =
         dao.archiveExpiredLinks(System.currentTimeMillis())
+
+    suspend fun deleteExpiredArchived(ttlHours: Long = 72L) =
+        dao.deleteExpiredArchived(System.currentTimeMillis(), ttlHours * 3_600_000L)
 
     suspend fun restoreLink(id: String) =
         dao.restoreLink(id)

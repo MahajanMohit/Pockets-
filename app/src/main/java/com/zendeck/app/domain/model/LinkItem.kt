@@ -16,7 +16,8 @@ data class LinkItem(
     val expiresAt: Long,
     val isArchived: Boolean,
     val domain: String,
-    val faviconUrl: String
+    val faviconUrl: String,
+    val archivedAt: Long = 0L
 ) {
     /** 0.0 = just added, 1.0 = exactly expired */
     @Transient val urgencyFraction: Float

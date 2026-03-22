@@ -4,6 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -47,6 +54,7 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 @Composable
 private fun ZenDeckApp() {
     var selectedTab by remember { mutableStateOf(Tab.Inbox) }
+    var previousOrdinal by remember { mutableIntStateOf(0) }
     val c = LocalZenDeckColors.current
 
     Scaffold(
@@ -57,7 +65,10 @@ private fun ZenDeckApp() {
                 Tab.entries.forEach { tab ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
+                        onClick = {
+                            previousOrdinal = selectedTab.ordinal
+                            selectedTab = tab
+                        },
                         icon = { Icon(tab.icon, contentDescription = tab.label) },
                         label = { Text(tab.label) },
                         colors = NavigationBarItemDefaults.colors(
@@ -72,10 +83,28 @@ private fun ZenDeckApp() {
             }
         }
     ) { innerPadding ->
-        when (selectedTab) {
-            Tab.Inbox -> InboxScreen(modifier = Modifier.padding(innerPadding))
-            Tab.Archive -> ArchiveScreen(modifier = Modifier.padding(innerPadding))
-            Tab.Settings -> SettingsScreen(modifier = Modifier.padding(innerPadding))
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                val slideDir = if (targetState.ordinal > previousOrdinal) 1 else -1
+                (slideInHorizontally(
+                    initialOffsetX = { w -> w * slideDir / 4 },
+                    animationSpec = tween(300)
+                ) + fadeIn(animationSpec = tween(300)))
+                    .togetherWith(
+                        slideOutHorizontally(
+                            targetOffsetX = { w -> -w * slideDir / 4 },
+                            animationSpec = tween(300)
+                        ) + fadeOut(animationSpec = tween(200))
+                    )
+            },
+            label = "tab_transition"
+        ) { tab ->
+            when (tab) {
+                Tab.Inbox -> InboxScreen(modifier = Modifier.padding(innerPadding))
+                Tab.Archive -> ArchiveScreen(modifier = Modifier.padding(innerPadding))
+                Tab.Settings -> SettingsScreen(modifier = Modifier.padding(innerPadding))
+            }
         }
     }
 }

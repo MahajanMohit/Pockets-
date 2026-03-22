@@ -1,6 +1,7 @@
 package com.zendeck.app.ui.screen
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
@@ -21,10 +22,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.components.LinkActionSheet
 import com.zendeck.app.ui.components.LinkCard
+import com.zendeck.app.ui.components.SwipeableCard
 import com.zendeck.app.ui.components.TagEditDialog
+import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.theme.LocalZenDeckColors
 import com.zendeck.app.ui.theme.UrgencyFresh
-import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.viewmodel.InboxViewModel
 
 @Composable
@@ -41,6 +43,7 @@ fun InboxScreen(
     var expandedLinkId by remember { mutableStateOf<String?>(null) }
     var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
+    // Track IDs being dismissed so we can animate them out before DB removes them
     val dismissedIds = remember { mutableStateListOf<String>() }
 
     LaunchedEffect(links) {
@@ -85,7 +88,7 @@ fun InboxScreen(
         )
 
         // ── Content ───────────────────────────────────────────────────────────
-        if (links.isEmpty()) {
+        if (links.isEmpty() && dismissedIds.isEmpty()) {
             if (searchQuery.isNotEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
@@ -107,22 +110,32 @@ fun InboxScreen(
                 items(links, key = { it.id }) { link ->
                     AnimatedVisibility(
                         visible = link.id !in dismissedIds,
-                        exit = shrinkVertically() + fadeOut()
+                        exit = shrinkVertically(animationSpec = tween(280)) +
+                               fadeOut(animationSpec = tween(200))
                     ) {
                         val isExpanded = expandedLinkId == link.id
-                        LinkCard(
-                            link = link,
-                            isExpanded = isExpanded,
-                            aiRating = ratings[link.id],
-                            onTap = {
-                                expandedLinkId = if (isExpanded) null else link.id
-                            },
-                            onDoubleTap = {
-                                inboxViewModel.openInCustomTab(context, link.url)
-                                inboxViewModel.recordLinkOpen(link)
-                            },
-                            onLongPress = { actionSheetLink = link }
-                        )
+                        SwipeableCard(
+                            onSwipeToArchive = {
+                                dismissedIds.add(link.id)
+                                inboxViewModel.archiveLink(link.id)
+                                inboxViewModel.recordLinkSkip(link)
+                                if (expandedLinkId == link.id) expandedLinkId = null
+                            }
+                        ) {
+                            LinkCard(
+                                link = link,
+                                isExpanded = isExpanded,
+                                aiRating = ratings[link.id],
+                                onTap = {
+                                    expandedLinkId = if (isExpanded) null else link.id
+                                },
+                                onDoubleTap = {
+                                    inboxViewModel.openInCustomTab(context, link.url)
+                                    inboxViewModel.recordLinkOpen(link)
+                                },
+                                onLongPress = { actionSheetLink = link }
+                            )
+                        }
                     }
                 }
                 item { Spacer(Modifier.height(8.dp)) }
@@ -188,7 +201,7 @@ private fun InboxEmptyState() {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Share any link to ZenDeck to start saving.\nTap to expand · double-tap to open.",
+            text = "Share any link to ZenDeck to start saving.\nSwipe left to archive · double-tap to open.",
             style = MaterialTheme.typography.bodyMedium,
             color = c.textSecondary,
             textAlign = TextAlign.Center

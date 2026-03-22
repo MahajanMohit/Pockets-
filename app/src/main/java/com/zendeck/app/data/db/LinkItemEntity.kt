@@ -10,7 +10,8 @@ import com.zendeck.app.domain.model.LinkItem
     indices = [
         Index(value = ["isArchived"]),
         Index(value = ["expiresAt"]),
-        Index(value = ["isPinned"])
+        Index(value = ["isPinned"]),
+        Index(value = ["url"])
     ]
 )
 data class LinkItemEntity(
@@ -25,7 +26,8 @@ data class LinkItemEntity(
     val expiresAt: Long,
     val isArchived: Boolean,
     val domain: String,
-    val faviconUrl: String
+    val faviconUrl: String,
+    val archivedAt: Long = 0L
 ) {
     fun toDomain() = LinkItem(
         id = id,
@@ -39,7 +41,8 @@ data class LinkItemEntity(
         expiresAt = expiresAt,
         isArchived = isArchived,
         domain = domain,
-        faviconUrl = faviconUrl
+        faviconUrl = faviconUrl,
+        archivedAt = archivedAt
     )
 
     companion object {
@@ -55,7 +58,8 @@ data class LinkItemEntity(
             expiresAt = item.expiresAt,
             isArchived = item.isArchived,
             domain = item.domain,
-            faviconUrl = item.faviconUrl
+            faviconUrl = item.faviconUrl,
+            archivedAt = item.archivedAt
         )
     }
 }

@@ -28,12 +28,13 @@ val ZenDeckTypography = Typography(
         lineHeight = 24.sp,
         letterSpacing = 0.sp
     ),
+    // Card titles — bumped from 15 → 17sp for readability
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
-        fontSize = 15.sp,
-        lineHeight = 20.sp,
-        letterSpacing = 0.15.sp
+        fontSize = 17.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.1.sp
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
@@ -42,31 +43,34 @@ val ZenDeckTypography = Typography(
         lineHeight = 24.sp,
         letterSpacing = 0.5.sp
     ),
+    // Descriptions / body copy — bumped from 14 → 15sp
     bodyMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 15.sp,
+        lineHeight = 22.sp,
+        letterSpacing = 0.25.sp
+    ),
+    // Bullets / secondary body — bumped from 12 → 14sp
+    bodySmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp,
         letterSpacing = 0.25.sp
     ),
-    bodySmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.4.sp
-    ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
+        fontSize = 13.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.5.sp
     ),
+    // Badges / domain / tags — bumped from 11 → 12sp
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
+        fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.5.sp
     )

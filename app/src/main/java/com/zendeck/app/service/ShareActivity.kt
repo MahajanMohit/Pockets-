@@ -38,7 +38,7 @@ class ShareActivity : ComponentActivity() {
             try {
                 val ttlHours = getTtlHours()
                 val scraped = scraperService.scrape(url)
-                val id = repository.addLink(
+                val (id, isNew) = repository.addLink(
                     url = url,
                     title = scraped.title,
                     description = scraped.description,
@@ -46,6 +46,12 @@ class ShareActivity : ComponentActivity() {
                     faviconUrl = scraped.faviconUrl,
                     ttlHours = ttlHours
                 )
+
+                if (!isNew) {
+                    Toast.makeText(this@ShareActivity, "Already in ZenDeck", Toast.LENGTH_SHORT).show()
+                    finish()
+                    return@launch
+                }
 
                 // Summarize in background after saving
                 if (scraped.bodyText.isNotBlank()) {

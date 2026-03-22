@@ -20,16 +20,23 @@ class LlmSummarizationService(private val context: Context) {
         private val MODEL_FILENAMES = listOf(
             "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B – best quality for 12GB RAM
             "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B – fast, good quality
-            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B – original fallback
+            "gemma-2b-it-gpu-int4.bin",     // Gemma 2B – GPU quantized
+            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B – CPU fallback
         )
 
-        private val SEARCH_DIRS = listOf("/sdcard/Download", "/data/local/tmp")
+        private val SEARCH_DIRS = listOf(
+            "/storage/emulated/0/Download/gemma",  // actual path from device
+            "/sdcard/Download/gemma",               // symlink variant
+            "/sdcard/Download",
+            "/data/local/tmp",
+        )
     }
 
     private fun initialize() {
         if (isInitialized) return
         try {
             val modelPath = findModelPath() ?: return
+            // GPU vs CPU backend is determined automatically by the model file format
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelPath)
                 .setMaxTokens(MAX_TOKENS)
