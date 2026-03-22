@@ -70,4 +70,8 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteLink(id: String) = viewModelScope.launch {
         repo.deleteLink(id)
     }
+
+    fun restoreLink(id: String) = viewModelScope.launch {
+        repo.restoreLink(id)
+    }
 }

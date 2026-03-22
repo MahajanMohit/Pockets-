@@ -1,12 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ZenDeck icon – pixel matrix "Z" on a dark circuit grid.
+  5 × 5 pixel grid, 10 dp pixels with 3 dp gap, centered in 108 dp safe zone.
+  Column X starts: 23, 36, 49, 62, 75   (step = 13)
+  Row    Y starts: 23, 36, 49, 62, 75   (step = 13)
+
+  Z pattern:
+    Row 0: ■ ■ ■ ■ ■   top bar
+    Row 1: · · · ■ ·   diagonal step right→left
+    Row 2: · · ■ · ·
+    Row 3: · ■ · · ·
+    Row 4: ■ ■ ■ ■ ■   bottom bar
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- ZenDeck icon: stylized "Z" in teal -->
+    <!-- Jarvis outer ring -->
     <path
-        android:fillColor="#FF00897B"
-        android:pathData="M30,30 L78,30 L78,42 L46,66 L78,66 L78,78 L30,78 L30,66 L62,42 L30,42 Z" />
+        android:pathData="M54,5 A49,49 0 1,0 54,103 A49,49 0 1,0 54,5 Z
+                         M54,9 A45,45 0 1,1 54,99 A45,45 0 1,1 54,9 Z"
+        android:fillColor="#0D2B28" />
+
+    <!-- Corner L-brackets (HUD aesthetic) -->
+    <path android:fillColor="#00897B" android:pathData="M10,10 h7 v2 h-7 z" />
+    <path android:fillColor="#00897B" android:pathData="M10,10 h2 v7 h-2 z" />
+    <path android:fillColor="#00897B" android:pathData="M91,10 h7 v2 h-7 z" />
+    <path android:fillColor="#00897B" android:pathData="M96,10 h2 v7 h-2 z" />
+    <path android:fillColor="#00897B" android:pathData="M10,96 h7 v2 h-7 z" />
+    <path android:fillColor="#00897B" android:pathData="M10,91 h2 v7 h-2 z" />
+    <path android:fillColor="#00897B" android:pathData="M91,96 h7 v2 h-7 z" />
+    <path android:fillColor="#00897B" android:pathData="M96,91 h2 v7 h-2 z" />
+
+    <!-- Dim matrix pixels (non-Z positions) -->
+    <path android:fillColor="#0D3330" android:pathData="M23,36 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M36,36 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M49,36 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M75,36 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M23,49 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M36,49 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M62,49 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M75,49 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M23,62 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M49,62 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M62,62 h10 v10 h-10 z" />
+    <path android:fillColor="#0D3330" android:pathData="M75,62 h10 v10 h-10 z" />
+
+    <!-- Bright teal Z pixels -->
+    <!-- Row 0 – top bar -->
+    <path android:fillColor="#00897B" android:pathData="M23,23 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M36,23 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M49,23 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M62,23 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M75,23 h10 v10 h-10 z" />
+    <!-- Row 1 – diagonal, brighter to suggest glow -->
+    <path android:fillColor="#00BFA5" android:pathData="M62,36 h10 v10 h-10 z" />
+    <!-- Row 2 – diagonal -->
+    <path android:fillColor="#00BFA5" android:pathData="M49,49 h10 v10 h-10 z" />
+    <!-- Row 3 – diagonal -->
+    <path android:fillColor="#00BFA5" android:pathData="M36,62 h10 v10 h-10 z" />
+    <!-- Row 4 – bottom bar -->
+    <path android:fillColor="#00897B" android:pathData="M23,75 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M36,75 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M49,75 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M62,75 h10 v10 h-10 z" />
+    <path android:fillColor="#00897B" android:pathData="M75,75 h10 v10 h-10 z" />
+
 </vector>

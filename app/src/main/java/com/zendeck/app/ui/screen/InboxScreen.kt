@@ -16,29 +16,34 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.domain.model.LinkItem
-import com.zendeck.app.ui.components.SwipeableCard
+import com.zendeck.app.ui.components.LinkActionSheet
+import com.zendeck.app.ui.components.LinkCard
 import com.zendeck.app.ui.components.TagEditDialog
 import com.zendeck.app.ui.theme.*
 import com.zendeck.app.ui.viewmodel.InboxViewModel
-import com.zendeck.app.ui.viewmodel.SettingsViewModel
 
 @Composable
 fun InboxScreen(
     modifier: Modifier = Modifier,
-    inboxViewModel: InboxViewModel = viewModel(),
-    settingsViewModel: SettingsViewModel = viewModel()
+    inboxViewModel: InboxViewModel = viewModel()
 ) {
     val links by inboxViewModel.topFiveLinks.collectAsStateWithLifecycle()
-    val showSummary by settingsViewModel.showSummary.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Accordion expansion: only one card open at a time
+    var expandedLinkId by remember { mutableStateOf<String?>(null) }
+    var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
     val dismissedIds = remember { mutableStateListOf<String>() }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-    ) {
+    // If the expanded link is archived/dismissed, collapse it
+    LaunchedEffect(links) {
+        if (expandedLinkId != null && links.none { it.id == expandedLinkId }) {
+            expandedLinkId = null
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
         if (links.isEmpty()) {
             InboxEmptyState()
         } else {
@@ -47,32 +52,52 @@ fun InboxScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(
-                    items = links,
-                    key = { it.id }
-                ) { link ->
+                items(links, key = { it.id }) { link ->
                     AnimatedVisibility(
                         visible = link.id !in dismissedIds,
                         exit = shrinkVertically() + fadeOut()
                     ) {
-                        SwipeableCard(
+                        val isExpanded = expandedLinkId == link.id
+                        LinkCard(
                             link = link,
-                            showSummary = showSummary,
-                            onOpen = {
-                                inboxViewModel.openInCustomTab(context, link.url)
+                            isExpanded = isExpanded,
+                            onTap = {
+                                if (isExpanded) {
+                                    inboxViewModel.openInCustomTab(context, link.url)
+                                } else {
+                                    // Collapse any other card, expand this one
+                                    expandedLinkId = link.id
+                                }
                             },
-                            onArchive = {
-                                dismissedIds.add(link.id)
-                                inboxViewModel.archiveLink(link.id)
-                            },
-                            onLongPress = {
-                                editingLink = link
-                            }
+                            onLongPress = { actionSheetLink = link }
                         )
                     }
                 }
             }
         }
+    }
+
+    // Long-press action sheet
+    actionSheetLink?.let { link ->
+        LinkActionSheet(
+            link = link,
+            isArchived = false,
+            onDismiss = { actionSheetLink = null },
+            onOpen = {
+                inboxViewModel.openInCustomTab(context, link.url)
+                actionSheetLink = null
+            },
+            onEditTags = {
+                editingLink = link
+                actionSheetLink = null
+            },
+            onArchive = {
+                dismissedIds.add(link.id)
+                inboxViewModel.archiveLink(link.id)
+                if (expandedLinkId == link.id) expandedLinkId = null
+                actionSheetLink = null
+            }
+        )
     }
 
     // Tag edit dialog
@@ -111,7 +136,7 @@ private fun InboxEmptyState() {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Share any link to ZenDeck to start reading.",
+            text = "Share any link to ZenDeck to start saving.\nTap a card to expand — tap again to open.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = TextAlign.Center
