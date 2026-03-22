@@ -49,15 +49,30 @@ class LlmSummarizationService(private val context: Context) {
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
-                val inference = llm ?: return@withContext ""
+                val inference = llm ?: return@withContext fallbackSummarize(text)
                 val prompt = buildPrompt(text)
                 val result = inference.generateResponse(prompt)
-                cleanSummary(result)
+                val cleaned = cleanSummary(result)
+                // If LLM returned garbage (empty after cleaning), fall back
+                if (cleaned.isBlank()) fallbackSummarize(text) else cleaned
             } catch (e: Exception) {
-                Log.w(TAG, "Summarization failed: ${e.message}")
-                ""
+                Log.w(TAG, "Summarization failed, using fallback: ${e.message}")
+                fallbackSummarize(text)
             }
         }
+    }
+
+    /**
+     * Sentence-extraction fallback used when no LLM model is installed.
+     * Picks the 3 most informative sentences from the body text.
+     */
+    private fun fallbackSummarize(text: String): String {
+        return text
+            .split(Regex("""(?<=[.!?])\s+"""))
+            .map { it.trim() }
+            .filter { it.length in 40..220 }
+            .take(3)
+            .joinToString("\n") { "• $it" }
     }
 
     private fun buildPrompt(text: String): String = """
