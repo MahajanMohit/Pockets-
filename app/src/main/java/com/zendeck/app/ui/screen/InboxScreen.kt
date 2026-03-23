@@ -4,16 +4,21 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,12 +42,17 @@ fun InboxScreen(
     val links by inboxViewModel.filteredInboxLinks.collectAsStateWithLifecycle()
     val searchQuery by inboxViewModel.inboxSearch.collectAsStateWithLifecycle()
     val ratings by inboxViewModel.inboxRatings.collectAsStateWithLifecycle()
+    val modelAvailable by inboxViewModel.modelAvailable.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val c = LocalZenDeckColors.current
+
+    // Check model presence when screen first appears
+    LaunchedEffect(Unit) { inboxViewModel.checkModelAvailability() }
 
     var expandedLinkId by remember { mutableStateOf<String?>(null) }
     var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
     // Track IDs being dismissed so we can animate them out before DB removes them
     val dismissedIds = remember { mutableStateListOf<String>() }
 
@@ -86,6 +96,40 @@ fun InboxScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         )
+
+        // ── AI model banner ───────────────────────────────────────────────────
+        if (!modelAvailable) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(AccentTeal.copy(alpha = 0.12f))
+                    .clickable { showDownloadDialog = true }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Download,
+                    contentDescription = null,
+                    tint = AccentTeal,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Enable AI summaries",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = AccentTeal
+                    )
+                    Text(
+                        "Download Gemma model (~1.1 GB) · WiFi only",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AccentTeal.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
 
         // ── Content ───────────────────────────────────────────────────────────
         if (links.isEmpty() && dismissedIds.isEmpty()) {
@@ -176,6 +220,36 @@ fun InboxScreen(
             onSave = { tags, isPinned ->
                 inboxViewModel.saveTagsAndPin(link.id, tags, isPinned)
                 editingLink = null
+            }
+        )
+    }
+
+    // Model download confirmation dialog
+    if (showDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = { Text("Download AI Model") },
+            text = {
+                Text(
+                    "This will download the Gemma 2B model (~1.1 GB) over WiFi " +
+                    "to enable on-device AI summaries.\n\n" +
+                    "The download runs in the background and a notification will " +
+                    "appear when it's complete.\n\n" +
+                    "By downloading you accept Google's Gemma Terms of Use."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    inboxViewModel.enqueueModelDownload()
+                    showDownloadDialog = false
+                }) {
+                    Text("Download", color = AccentTeal)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }) {
+                    Text("Not now")
+                }
             }
         )
     }

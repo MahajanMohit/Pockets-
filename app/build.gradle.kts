@@ -83,6 +83,22 @@ android {
     }
 }
 
+// Kotlin 2.0 merged kotlin-stdlib-jdk7/jdk8 into kotlin-stdlib.
+// Older transitive deps (e.g. mediapipe) still pull in the pre-2.0 artifacts,
+// causing "Platform declaration clash" for BigDecimal/BigInteger operators.
+// Substitute both jdk7/jdk8 with kotlin-stdlib itself so they never land
+// on the compile classpath.
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("org.jetbrains.kotlin:kotlin-stdlib-jdk8"))
+            .using(module("org.jetbrains.kotlin:kotlin-stdlib:2.0.21"))
+            .because("kotlin-stdlib-jdk8 merged into kotlin-stdlib in Kotlin 2.0")
+        substitute(module("org.jetbrains.kotlin:kotlin-stdlib-jdk7"))
+            .using(module("org.jetbrains.kotlin:kotlin-stdlib:2.0.21"))
+            .because("kotlin-stdlib-jdk7 merged into kotlin-stdlib in Kotlin 2.0")
+    }
+}
+
 dependencies {
     implementation(libs.material)
     implementation(libs.androidx.core.ktx)
@@ -110,7 +126,11 @@ dependencies {
     implementation(libs.jsoup)
 
     // MediaPipe LLM Inference
-    implementation(libs.mediapipe.tasks.genai)
+    implementation(libs.mediapipe.tasks.genai) {
+        // mediapipe pulls in pre-2.0 kotlin-stdlib-jdk8 which clashes with kotlin-stdlib 2.0
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
+    }
 
     // Chrome Custom Tabs
     implementation(libs.androidx.browser)
@@ -127,6 +147,9 @@ dependencies {
 
     // Kotlin Serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // NanoHTTPD – embedded LAN server
+    implementation(libs.nanohttpd)
 
     // Coil (image loading)
     implementation(libs.coil.compose)

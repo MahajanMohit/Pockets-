@@ -1,8 +1,10 @@
 package com.zendeck.app.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -11,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.domain.model.LinkItem
+import com.zendeck.app.server.LanServerService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +33,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val KEY_DARK_MODE = booleanPreferencesKey("dark_mode")
         val TTL_OPTIONS = listOf(24L, 48L, 72L, 168L)
         private const val TAG = "SettingsViewModel"
+    }
+
+    // ── LAN Server ────────────────────────────────────────────────────────────
+
+    /** Reflects whether the foreground service is currently running. */
+    val lanServerRunning: StateFlow<Boolean> = LanServerService.isRunning
+
+    /** Current LAN IPv4 address, or null when not on WiFi. */
+    fun getLanIpAddress(): String? = LanServerService.getLanIpAddress()
+
+    fun toggleLanServer(enable: Boolean) {
+        val app = getApplication<Application>()
+        val intent = Intent(app, LanServerService::class.java)
+        if (enable) {
+            ContextCompat.startForegroundService(app, intent)
+        } else {
+            app.stopService(intent)
+        }
     }
 
     val ttlHours: StateFlow<Long> = dataStore.data

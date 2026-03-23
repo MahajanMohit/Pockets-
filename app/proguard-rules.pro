@@ -56,3 +56,10 @@
 -keep class com.zendeck.app.service.ShareActivity { *; }
 -keep class com.zendeck.app.widget.ZenDeckWidgetReceiver { *; }
 -keep class com.zendeck.app.worker.TTLWorker { *; }
+-keep class com.zendeck.app.worker.ModelDownloadWorker { *; }
+-keep class com.zendeck.app.server.LanServerService { *; }
+
+# NanoHTTPD – embedded HTTP server used for LAN access
+# R8 would strip internal socket/handler classes without this rule
+-keep class fi.iki.elonen.** { *; }
+-dontwarn fi.iki.elonen.**

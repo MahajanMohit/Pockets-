@@ -30,6 +30,19 @@ class LlmSummarizationService(private val context: Context) {
             "/sdcard/Download",
             "/data/local/tmp",
         )
+
+        /**
+         * Returns true if any supported model file exists in any of the search paths.
+         * Called from InboxViewModel to decide whether to show the download banner.
+         */
+        fun hasModel(context: Context): Boolean {
+            val dirs = buildList {
+                add(context.filesDir)
+                context.getExternalFilesDir("models")?.let { add(it) }
+                addAll(SEARCH_DIRS.map { File(it) })
+            }
+            return MODEL_FILENAMES.any { name -> dirs.any { dir -> File(dir, name).exists() } }
+        }
     }
 
     private fun initialize() {
@@ -50,8 +63,11 @@ class LlmSummarizationService(private val context: Context) {
     }
 
     private fun findModelPath(): String? {
-        val searchDirs = listOf(context.filesDir) +
-            SEARCH_DIRS.map { File(it) }
+        val searchDirs = buildList {
+            add(context.filesDir)
+            context.getExternalFilesDir("models")?.let { add(it) }
+            addAll(SEARCH_DIRS.map { File(it) })
+        }
         for (name in MODEL_FILENAMES) {
             for (dir in searchDirs) {
                 val f = File(dir, name)
