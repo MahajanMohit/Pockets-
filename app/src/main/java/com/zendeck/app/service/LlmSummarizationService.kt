@@ -13,6 +13,7 @@ class LlmSummarizationService(private val context: Context) {
     private var isInitialized = false
     private var initAttempted = false   // true once we've tried (and possibly failed) to load
     private var initFailReason = ""     // non-empty if load was attempted but failed
+    private var lastCandidatePaths: List<String> = emptyList() // paths seen on last attempt
 
     companion object {
         private const val TAG = "LlmSummarizationService"
@@ -49,10 +50,12 @@ class LlmSummarizationService(private val context: Context) {
 
     private fun initialize() {
         if (isInitialized) return
-        if (initAttempted) return   // already tried every candidate, don't retry
-        initAttempted = true
-
         val candidates = findAllModelPaths()
+        // Skip only if we already tried with these exact files — re-run if new files appeared
+        if (initAttempted && candidates == lastCandidatePaths) return
+        initAttempted = true
+        lastCandidatePaths = candidates
+        initFailReason = ""
         if (candidates.isEmpty()) {
             initFailReason = "no_file"
             Log.w(TAG, "No model file found in any search directory")
@@ -253,5 +256,6 @@ class LlmSummarizationService(private val context: Context) {
         isInitialized = false
         initAttempted = false
         initFailReason = ""
+        lastCandidatePaths = emptyList()
     }
 }
