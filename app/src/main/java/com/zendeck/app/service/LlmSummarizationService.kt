@@ -11,6 +11,8 @@ class LlmSummarizationService(private val context: Context) {
 
     private var llm: LlmInference? = null
     private var isInitialized = false
+    private var initAttempted = false   // true once we've tried (and possibly failed) to load
+    private var initFailReason = ""     // non-empty if load was attempted but failed
 
     companion object {
         private const val TAG = "LlmSummarizationService"
@@ -47,38 +49,54 @@ class LlmSummarizationService(private val context: Context) {
 
     private fun initialize() {
         if (isInitialized) return
-        try {
-            val modelPath = findModelPath() ?: return
-            // GPU vs CPU backend is determined automatically by the model file format
-            val options = LlmInference.LlmInferenceOptions.builder()
-                .setModelPath(modelPath)
-                .setMaxTokens(MAX_TOKENS)
-                .build()
-            llm = LlmInference.createFromOptions(context, options)
-            isInitialized = true
-            Log.i(TAG, "LLM initialized from: $modelPath")
-        } catch (e: Exception) {
-            Log.w(TAG, "LLM initialization failed, summaries disabled: ${e.message}")
+        if (initAttempted) return   // already tried every candidate, don't retry
+        initAttempted = true
+
+        val candidates = findAllModelPaths()
+        if (candidates.isEmpty()) {
+            initFailReason = "no_file"
+            Log.w(TAG, "No model file found in any search directory")
+            return
         }
+        // Try each candidate in priority order; GPU models may fail on unsupported devices
+        val errors = mutableListOf<String>()
+        for (path in candidates) {
+            try {
+                val options = LlmInference.LlmInferenceOptions.builder()
+                    .setModelPath(path)
+                    .setMaxTokens(MAX_TOKENS)
+                    .build()
+                llm = LlmInference.createFromOptions(context, options)
+                isInitialized = true
+                Log.i(TAG, "LLM initialized from: $path")
+                return
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load $path: ${e.message}")
+                errors += "${File(path).name}: ${e.message}"
+            }
+        }
+        initFailReason = "load_failed"
+        Log.w(TAG, "All model candidates failed: $errors")
     }
 
-    private fun findModelPath(): String? {
+    /** Returns every existing model file across all search dirs, in priority order. */
+    private fun findAllModelPaths(): List<String> {
         val searchDirs = buildList {
             add(context.filesDir)
             context.getExternalFilesDir("models")?.let { add(it) }
             addAll(SEARCH_DIRS.map { File(it) })
         }
-        for (name in MODEL_FILENAMES) {
-            for (dir in searchDirs) {
+        return MODEL_FILENAMES.flatMap { name ->
+            searchDirs.mapNotNull { dir ->
                 val f = File(dir, name)
-                if (f.exists()) {
-                    Log.i(TAG, "Found model: ${f.absolutePath}")
-                    return f.absolutePath
-                }
+                if (f.exists()) { Log.i(TAG, "Found model candidate: ${f.absolutePath}"); f.absolutePath }
+                else null
             }
         }
-        return null
     }
+
+    // Kept for callers that still reference findModelPath() conceptually; returns first candidate.
+    private fun findModelPath(): String? = findAllModelPaths().firstOrNull()
 
     /**
      * @param text  Extracted article body text
@@ -203,8 +221,18 @@ class LlmSummarizationService(private val context: Context) {
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
-                val inference = llm
-                    ?: return@withContext "⚠️ No AI model found. Go to Inbox and tap 'Enable AI summaries' to download it."
+                val inference = llm ?: return@withContext when (initFailReason) {
+                    "load_failed" ->
+                        "⚠️ Model file was found but failed to load.\n\n" +
+                        "The GPU model (gemma-2b-it-gpu-int4.bin) may not be supported on this device. " +
+                        "Try downloading the CPU model instead: gemma-2b-it-cpu-int4.bin — " +
+                        "place it in /storage/emulated/0/Download/gemma/ and restart the app."
+                    else ->
+                        "⚠️ No AI model found.\n\nPlace a model file in:\n" +
+                        "/storage/emulated/0/Download/gemma/\n\n" +
+                        "Supported filenames:\n• gemma-2b-it-cpu-int4.bin\n• gemma-2b-it-gpu-int4.bin\n" +
+                        "• gemma-3-1b-it-cpu-int4.bin\n• gemma-3-4b-it-cpu-int4.bin"
+                }
                 val prompt = """
                     <start_of_turn>user
                     ${message.trim()}
@@ -223,5 +251,7 @@ class LlmSummarizationService(private val context: Context) {
         llm?.close()
         llm = null
         isInitialized = false
+        initAttempted = false
+        initFailReason = ""
     }
 }
