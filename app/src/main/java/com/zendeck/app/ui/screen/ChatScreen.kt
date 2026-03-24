@@ -1,5 +1,10 @@
 package com.zendeck.app.ui.screen
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -36,9 +42,23 @@ fun ChatScreen(
     val isLoading by chatViewModel.isLoading.collectAsStateWithLifecycle()
     val modelAvailable by chatViewModel.modelAvailable.collectAsStateWithLifecycle()
     val c = LocalZenDeckColors.current
+    val context = LocalContext.current
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
+
+    // On Android 11+ request "All files access" so MediaPipe can open model files
+    // in Download/gemma/ via native code (scoped storage blocks native file open otherwise)
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            !Environment.isExternalStorageManager()
+        ) {
+            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+            context.startActivity(intent)
+        }
+    }
 
     // Auto-scroll to bottom when messages change
     LaunchedEffect(messages.size) {

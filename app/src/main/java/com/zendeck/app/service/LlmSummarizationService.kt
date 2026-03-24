@@ -11,13 +11,14 @@ class LlmSummarizationService(private val context: Context) {
 
     private var llm: LlmInference? = null
     private var isInitialized = false
-    private var initAttempted = false   // true once we've tried (and possibly failed) to load
-    private var initFailReason = ""     // non-empty if load was attempted but failed
-    private var lastCandidatePaths: List<String> = emptyList() // paths seen on last attempt
+    private var initAttempted = false
+    private var initFailReason = ""
+    private var lastCandidatePaths: List<String> = emptyList()
+    private var lastLoadErrors: List<String> = emptyList() // actual exception messages per candidate
 
     companion object {
         private const val TAG = "LlmSummarizationService"
-        private const val MAX_TOKENS = 512
+        private const val MAX_TOKENS = 1024
 
         // Prefer higher-quality models if present; fall back to smaller ones
         private val MODEL_FILENAMES = listOf(
@@ -68,17 +69,22 @@ class LlmSummarizationService(private val context: Context) {
                 val options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(path)
                     .setMaxTokens(MAX_TOKENS)
+                    .setTopK(40)
+                    .setTemperature(0.8f)
+                    .setRandomSeed(101)
                     .build()
                 llm = LlmInference.createFromOptions(context, options)
                 isInitialized = true
                 Log.i(TAG, "LLM initialized from: $path")
                 return
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to load $path: ${e.message}")
-                errors += "${File(path).name}: ${e.message}"
+                val msg = "${File(path).name}: ${e::class.simpleName}: ${e.message}"
+                Log.w(TAG, "Failed to load $path: $msg")
+                errors += msg
             }
         }
         initFailReason = "load_failed"
+        lastLoadErrors = errors
         Log.w(TAG, "All model candidates failed: $errors")
     }
 
@@ -225,11 +231,16 @@ class LlmSummarizationService(private val context: Context) {
             try {
                 initialize()
                 val inference = llm ?: return@withContext when (initFailReason) {
-                    "load_failed" ->
-                        "⚠️ Model file was found but failed to load.\n\n" +
-                        "The GPU model (gemma-2b-it-gpu-int4.bin) may not be supported on this device. " +
-                        "Try downloading the CPU model instead: gemma-2b-it-cpu-int4.bin — " +
-                        "place it in /storage/emulated/0/Download/gemma/ and restart the app."
+                    "load_failed" -> buildString {
+                        append("⚠️ Model file(s) found but failed to load.\n\n")
+                        append("Errors:\n")
+                        lastLoadErrors.forEach { append("• $it\n") }
+                        append("\nCommon causes:\n")
+                        append("• Storage permission denied (grant 'All files access' in Android Settings > Apps > ZenDeck > Permissions)\n")
+                        append("• GPU model on unsupported device — use gemma-2b-it-cpu-int4.bin\n")
+                        append("• Not enough RAM to load the model\n")
+                        append("• Model file corrupted (re-download it)")
+                    }
                     else ->
                         "⚠️ No AI model found.\n\nPlace a model file in:\n" +
                         "/storage/emulated/0/Download/gemma/\n\n" +
