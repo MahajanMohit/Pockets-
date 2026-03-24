@@ -8,7 +8,7 @@ interface LinkDao {
     @Query("SELECT * FROM link_items WHERE isArchived = 0 ORDER BY isPinned DESC, expiresAt ASC")
     fun getActiveLinks(): Flow<List<LinkItemEntity>>
 
-    @Query("SELECT * FROM link_items WHERE isArchived = 0 ORDER BY isPinned DESC, expiresAt ASC LIMIT 5")
+    @Query("SELECT * FROM link_items WHERE isArchived = 0 ORDER BY isPinned DESC, expiresAt ASC")
     fun getTopFiveActive(): Flow<List<LinkItemEntity>>
 
     @Query("SELECT * FROM link_items WHERE isArchived = 1 ORDER BY expiresAt DESC")

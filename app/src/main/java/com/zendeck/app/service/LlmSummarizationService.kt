@@ -191,6 +191,34 @@ class LlmSummarizationService(private val context: Context) {
             }
     }
 
+    /** Returns true if the model loaded successfully (i.e. LLM inference is active). */
+    fun isLlmLoaded(): Boolean = isInitialized && llm != null
+
+    /**
+     * Sends an arbitrary [message] to the model and returns the raw response.
+     * Useful for verifying inference works or for the Chat screen.
+     */
+    suspend fun chat(message: String): String {
+        if (message.isBlank()) return ""
+        return withContext(Dispatchers.Default) {
+            try {
+                initialize()
+                val inference = llm
+                    ?: return@withContext "⚠️ No AI model found. Go to Inbox and tap 'Enable AI summaries' to download it."
+                val prompt = """
+                    <start_of_turn>user
+                    ${message.trim()}
+                    <end_of_turn>
+                    <start_of_turn>model
+                """.trimIndent()
+                inference.generateResponse(prompt).trim()
+            } catch (e: Exception) {
+                Log.w(TAG, "Chat inference failed: ${e.message}")
+                "Error during inference: ${e.message}"
+            }
+        }
+    }
+
     fun close() {
         llm?.close()
         llm = null
