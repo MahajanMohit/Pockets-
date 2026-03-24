@@ -20,12 +20,12 @@ class LlmSummarizationService(private val context: Context) {
         private const val TAG = "LlmSummarizationService"
         private const val MAX_TOKENS = 1024
 
-        // Prefer higher-quality models if present; fall back to smaller ones
+        // CPU models listed first — GPU models fail on most devices and are kept only as a fallback
         private val MODEL_FILENAMES = listOf(
-            "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B – best quality for 12GB RAM
-            "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B – fast, good quality
-            "gemma-2b-it-gpu-int4.bin",     // Gemma 2B – GPU quantized
-            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B – CPU fallback
+            "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B CPU – best quality
+            "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B CPU – fast, good quality
+            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B CPU – reliable on all devices
+            "gemma-2b-it-gpu-int4.bin",     // Gemma 2B GPU – fallback, may fail on some devices
         )
 
         private val SEARCH_DIRS = listOf(
@@ -129,7 +129,7 @@ class LlmSummarizationService(private val context: Context) {
                 val inference = llm ?: return@withContext fallbackSummarize(text)
                 val prompt = buildPrompt(text, memoryContext, customPrompt)
                 val result = inference.generateResponse(prompt)
-                val cleaned = if (customPrompt.isBlank()) cleanSummary(result) else result.trim()
+                val cleaned = cleanSummary(result)
                 if (cleaned.isBlank()) fallbackSummarize(text) else cleaned
             } catch (e: Exception) {
                 Log.w(TAG, "Summarization failed, using fallback: ${e.message}")
@@ -216,28 +216,17 @@ class LlmSummarizationService(private val context: Context) {
 
         return """
             <start_of_turn>user
-            ${contextLine}Summarize this article in exactly 3 concise bullet points.
-            Rules:
-            - Each bullet starts with "• "
-            - Maximum 20 words per bullet
-            - Focus on key facts, not filler or opinions
-            - Only output the 3 bullets, nothing else
+            ${contextLine}Read the following article carefully and write a clear, fluent summary in 5 to 6 sentences. Use precise vocabulary and complete sentences. Cover the main point, the key supporting details, and any important conclusion or implication. Do not use bullet points, headers, or lists — write it as a single coherent paragraph. Do not begin with "The article" or "This article" — start directly with the substance.
 
             Article:
             $truncated
             <end_of_turn>
             <start_of_turn>model
-            •
         """.trimIndent()
     }
 
     private fun cleanSummary(raw: String): String {
-        return raw.lines()
-            .filter { it.trimStart().startsWith("•") || it.trimStart().startsWith("-") || it.trimStart().startsWith("*") }
-            .take(3)
-            .joinToString("\n") { line ->
-                "• " + line.trimStart().removePrefix("•").removePrefix("-").removePrefix("*").trim()
-            }
+        return raw.trim()
     }
 
     /** Returns true if the model loaded successfully (i.e. LLM inference is active). */
@@ -271,6 +260,8 @@ class LlmSummarizationService(private val context: Context) {
                 }
                 val prompt = """
                     <start_of_turn>user
+                    You are a helpful reading assistant. When the user pastes or describes any text or article, summarise it in 5 to 6 concise bullet points, each capturing one key idea. Use clear, precise language. If the user asks a direct question instead, answer it directly without bullet points.
+
                     ${message.trim()}
                     <end_of_turn>
                     <start_of_turn>model

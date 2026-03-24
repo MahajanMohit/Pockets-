@@ -34,7 +34,9 @@ class ZenDeckNanoServer(
         session.method == Method.GET  && session.uri == "/"                    -> serveHtml()
         session.method == Method.GET  && session.uri == "/api/links"           -> serveLinks(archived = false)
         session.method == Method.GET  && session.uri == "/api/links/archived"  -> serveLinks(archived = true)
+        session.method == Method.GET  && session.uri == "/api/links/all"       -> serveAllLinks()
         session.method == Method.POST && session.uri == "/api/links"           -> ingestLink(session)
+        session.method == Method.POST && session.uri == "/api/sync/push"       -> syncPush(session)
         session.method == Method.OPTIONS                                        -> optionsResponse()
         else -> newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
     }
@@ -78,6 +80,27 @@ class ZenDeckNanoServer(
         }
         val statusCode = if (isNew) Response.Status.CREATED else Response.Status.OK
         return newFixedLengthResponse(statusCode, "application/json", """{"id":"$id","isNew":$isNew}""")
+    }
+
+    private fun serveAllLinks(): Response {
+        val links: List<LinkItem> = runBlocking { repo.getAllLinks() }
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.encodeToString(links))
+    }
+
+    /** Receives a JSON array of LinkItems from a peer device and upserts them locally. */
+    private fun syncPush(session: IHTTPSession): Response {
+        val body = HashMap<String, String>()
+        session.parseBody(body)
+        val postData = body["postData"] ?: body.values.firstOrNull() ?: ""
+        return try {
+            val links = Json.decodeFromString<List<LinkItem>>(postData)
+            runBlocking { repo.mergeLinksFromPeer(links) }
+            Log.i(TAG, "Sync push: received ${links.size} link(s) from peer")
+            newFixedLengthResponse(Response.Status.OK, "application/json", """{"synced":${links.size}}""")
+        } catch (e: Exception) {
+            Log.e(TAG, "Sync push failed: ${e.message}")
+            newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Invalid link data: ${e.message}")
+        }
     }
 
     private fun optionsResponse(): Response =

@@ -24,11 +24,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _modelAvailable = MutableStateFlow(false)
     val modelAvailable: StateFlow<Boolean> = _modelAvailable.asStateFlow()
 
-    /** Filename of the model that will be (or is) loaded, e.g. "gemma-2b-it-cpu-int4.bin". */
-    val activeModelName: String? get() = LlmSummarizationService.getActiveModelName(getApplication())
+    private val _activeModelName = MutableStateFlow<String?>(null)
+    val activeModelName: StateFlow<String?> = _activeModelName.asStateFlow()
 
-    init {
-        _modelAvailable.value = LlmSummarizationService.hasModel(getApplication())
+    init { refreshModelState() }
+
+    /** Re-reads model presence from disk — updates automatically after import. */
+    fun refreshModelState() {
+        val name = LlmSummarizationService.getActiveModelName(getApplication())
+        _activeModelName.value = name
+        _modelAvailable.value = name != null
     }
 
     fun sendMessage(text: String) {
@@ -42,6 +47,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val reply = llmService.chat(trimmed)
             _messages.value = _messages.value + ChatMessage(reply, isUser = false)
             _isLoading.value = false
+            refreshModelState() // update name if model just loaded for the first time
         }
     }
 

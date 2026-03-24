@@ -39,7 +39,9 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
-    val activeModelName = remember { chatViewModel.activeModelName }
+    val activeModelName by chatViewModel.activeModelName.collectAsStateWithLifecycle()
+    // Re-check when screen becomes visible (e.g. after importing in Settings)
+    LaunchedEffect(Unit) { chatViewModel.refreshModelState() }
 
     // Auto-scroll to bottom when messages change
     LaunchedEffect(messages.size) {
