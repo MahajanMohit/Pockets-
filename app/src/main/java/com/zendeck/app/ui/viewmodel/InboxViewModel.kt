@@ -66,10 +66,6 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Base link flows ───────────────────────────────────────────────────────
 
-    private val topFiveLinks: StateFlow<List<LinkItem>> = repo
-        .getTopFiveActive()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
     private val allActiveLinks: StateFlow<List<LinkItem>> = repo
         .getActiveLinks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -89,12 +85,10 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
     fun setInboxSearch(q: String) { _inboxSearch.value = q }
     fun setArchiveSearch(q: String) { _archiveSearch.value = q }
 
-    /** Inbox links: top-5 when not searching, full filtered list while searching. */
     val filteredInboxLinks: StateFlow<List<LinkItem>> = combine(
-        topFiveLinks, allActiveLinks, _inboxSearch
-    ) { top, all, q ->
-        if (q.isBlank()) top
-        else all.filter { it.matches(q) }
+        allActiveLinks, _inboxSearch
+    ) { all, q ->
+        if (q.isBlank()) all else all.filter { it.matches(q) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val filteredArchivedLinks: StateFlow<List<LinkItem>> = combine(
