@@ -24,8 +24,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _modelAvailable = MutableStateFlow(false)
     val modelAvailable: StateFlow<Boolean> = _modelAvailable.asStateFlow()
 
+    /** Filename of the model that will be (or is) loaded, e.g. "gemma-2b-it-cpu-int4.bin". */
+    val activeModelName: String? get() = LlmSummarizationService.getActiveModelName(getApplication())
+
     init {
-        _modelAvailable.value = LlmSummarizationService.hasModel(application)
+        _modelAvailable.value = LlmSummarizationService.hasModel(getApplication())
     }
 
     fun sendMessage(text: String) {

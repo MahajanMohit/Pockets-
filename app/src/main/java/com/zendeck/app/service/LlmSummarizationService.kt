@@ -35,17 +35,26 @@ class LlmSummarizationService(private val context: Context) {
             "/data/local/tmp",
         )
 
+        /** Returns true if any supported model file exists on disk. */
+        fun hasModel(context: Context): Boolean = getActiveModelName(context) != null
+
         /**
-         * Returns true if any supported model file exists in any of the search paths.
-         * Called from InboxViewModel to decide whether to show the download banner.
+         * Returns the filename of the highest-priority model file that currently exists
+         * on disk (same search order as initialization), or null if none found.
+         * Used by the UI to display which model is active.
          */
-        fun hasModel(context: Context): Boolean {
+        fun getActiveModelName(context: Context): String? {
             val dirs = buildList {
                 add(context.filesDir)
                 context.getExternalFilesDir("models")?.let { add(it) }
                 addAll(SEARCH_DIRS.map { File(it) })
             }
-            return MODEL_FILENAMES.any { name -> dirs.any { dir -> File(dir, name).exists() } }
+            for (name in MODEL_FILENAMES) {
+                for (dir in dirs) {
+                    if (File(dir, name).exists()) return name
+                }
+            }
+            return null
         }
     }
 
@@ -108,18 +117,19 @@ class LlmSummarizationService(private val context: Context) {
     private fun findModelPath(): String? = findAllModelPaths().firstOrNull()
 
     /**
-     * @param text  Extracted article body text
-     * @param memoryContext  Short string from ReadingMemoryStore describing user interests
+     * @param text          Extracted article body text
+     * @param memoryContext Short string from ReadingMemoryStore describing user interests
+     * @param customPrompt  Optional user-defined prompt; overrides the built-in one when non-blank
      */
-    suspend fun summarize(text: String, memoryContext: String = ""): String {
+    suspend fun summarize(text: String, memoryContext: String = "", customPrompt: String = ""): String {
         if (text.isBlank()) return ""
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
                 val inference = llm ?: return@withContext fallbackSummarize(text)
-                val prompt = buildPrompt(text, memoryContext)
+                val prompt = buildPrompt(text, memoryContext, customPrompt)
                 val result = inference.generateResponse(prompt)
-                val cleaned = cleanSummary(result)
+                val cleaned = if (customPrompt.isBlank()) cleanSummary(result) else result.trim()
                 if (cleaned.isBlank()) fallbackSummarize(text) else cleaned
             } catch (e: Exception) {
                 Log.w(TAG, "Summarization failed, using fallback: ${e.message}")
@@ -184,13 +194,25 @@ class LlmSummarizationService(private val context: Context) {
             .joinToString("\n") { "• $it" }
     }
 
-    private fun buildPrompt(text: String, memoryContext: String): String {
+    private fun buildPrompt(text: String, memoryContext: String, customPrompt: String = ""): String {
+        val truncated = text.take(3000)
+
+        // If user provided a custom prompt, use it verbatim with the article appended
+        if (customPrompt.isNotBlank()) {
+            return """
+                <start_of_turn>user
+                ${customPrompt.trim()}
+
+                Article:
+                $truncated
+                <end_of_turn>
+                <start_of_turn>model
+            """.trimIndent()
+        }
+
         val contextLine = if (memoryContext.isNotBlank())
             "Reader profile: $memoryContext\n\n"
         else ""
-
-        // Truncate body to fit model context window (keep first 3000 chars)
-        val truncated = text.take(3000)
 
         return """
             <start_of_turn>user

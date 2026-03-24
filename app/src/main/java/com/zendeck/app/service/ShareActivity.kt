@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.lifecycle.lifecycleScope
 import com.zendeck.app.data.repository.LinkRepository
+import com.zendeck.app.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -53,9 +54,10 @@ class ShareActivity : ComponentActivity() {
                     return@launch
                 }
 
-                // Summarize in background after saving
-                if (scraped.bodyText.isNotBlank()) {
-                    val summary = llmService.summarize(scraped.bodyText)
+                // Summarize only when AI summaries are enabled in Settings
+                if (scraped.bodyText.isNotBlank() && getAiSummariesEnabled()) {
+                    val customPrompt = getCustomSummaryPrompt()
+                    val summary = llmService.summarize(scraped.bodyText, customPrompt = customPrompt)
                     if (summary.isNotBlank()) {
                         repository.updateSummary(id, summary)
                     }
@@ -81,9 +83,21 @@ class ShareActivity : ComponentActivity() {
         return try {
             val dataStore = (application as? com.zendeck.app.ZenDeckApplication)?.dataStore
             dataStore?.data?.first()?.get(longPreferencesKey("ttl_hours")) ?: 72L
-        } catch (e: Exception) {
-            72L
-        }
+        } catch (e: Exception) { 72L }
+    }
+
+    private suspend fun getAiSummariesEnabled(): Boolean {
+        return try {
+            val dataStore = (application as? com.zendeck.app.ZenDeckApplication)?.dataStore
+            dataStore?.data?.first()?.get(SettingsViewModel.KEY_AI_SUMMARIES) ?: true
+        } catch (e: Exception) { true }
+    }
+
+    private suspend fun getCustomSummaryPrompt(): String {
+        return try {
+            val dataStore = (application as? com.zendeck.app.ZenDeckApplication)?.dataStore
+            dataStore?.data?.first()?.get(SettingsViewModel.KEY_CUSTOM_PROMPT) ?: ""
+        } catch (e: Exception) { "" }
     }
 
     override fun onDestroy() {
