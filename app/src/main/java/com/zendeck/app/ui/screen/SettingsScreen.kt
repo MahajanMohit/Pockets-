@@ -159,7 +159,7 @@ fun SettingsScreen(
         )
         Text(
             "Picks the .bin file from anywhere on your device and copies it into the app's " +
-            "private storage — no special permissions required. Works for both CPU and GPU models.",
+            "private storage — no special permissions required.",
             style = MaterialTheme.typography.bodySmall, color = c.textSecondary
         )
         Spacer(Modifier.height(8.dp))
@@ -222,11 +222,10 @@ fun SettingsScreen(
             ) {
                 Text("1. The app has created a folder for you:", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
                 Text("   /storage/emulated/0/Download/gemma/", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
-                Text("2. Download one of these CPU model files into that folder:", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
-                Text("   • gemma-2b-it-cpu-int4.bin      (Gemma 2B CPU — recommended, ~1.35 GB)", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
-                Text("   • gemma-3-1b-it-cpu-int4.bin    (Gemma 3 1B CPU — faster, ~0.8 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                Text("   • gemma-3-4b-it-cpu-int4.bin    (Gemma 3 4B CPU — best quality, ~2.5 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                Text("   • gemma-2b-it-gpu-int4.bin      (GPU only — use only if CPU fails, ~1.0 GB)", style = MaterialTheme.typography.bodySmall, color = c.textDisabled)
+                Text("2. Download one of these model files into that folder:", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
+                Text("   • gemma-2b-it-cpu-int4.bin      (recommended, ~1.35 GB)", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
+                Text("   • gemma-3-1b-it-cpu-int4.bin    (smaller/faster, ~0.8 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                Text("   • gemma-3-4b-it-cpu-int4.bin    (best quality, ~2.5 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 Text("3. OR use the 'Import model file' button above to pick the file directly — no folder needed.", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
                 Text("4. On Android 11+ you may need to grant 'All files access' in:\n   Settings → Apps → ZenDeck → Permissions", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 Spacer(Modifier.height(4.dp))

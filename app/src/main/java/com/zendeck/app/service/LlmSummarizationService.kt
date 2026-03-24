@@ -20,12 +20,10 @@ class LlmSummarizationService(private val context: Context) {
         private const val TAG = "LlmSummarizationService"
         private const val MAX_TOKENS = 1024
 
-        // CPU models listed first — GPU models fail on most devices and are kept only as a fallback
         private val MODEL_FILENAMES = listOf(
             "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B CPU – best quality
             "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B CPU – fast, good quality
             "gemma-2b-it-cpu-int4.bin",     // Gemma 2B CPU – reliable on all devices
-            "gemma-2b-it-gpu-int4.bin",     // Gemma 2B GPU – fallback, may fail on some devices
         )
 
         private val SEARCH_DIRS = listOf(
@@ -253,10 +251,11 @@ class LlmSummarizationService(private val context: Context) {
                         append("• Model file corrupted (re-download it)")
                     }
                     else ->
-                        "⚠️ No AI model found.\n\nPlace a model file in:\n" +
+                        "⚠️ No AI model found.\n\nUse Settings → AI Model to import one, or place a model file in:\n" +
                         "/storage/emulated/0/Download/gemma/\n\n" +
-                        "Supported filenames:\n• gemma-2b-it-cpu-int4.bin\n• gemma-2b-it-gpu-int4.bin\n" +
-                        "• gemma-3-1b-it-cpu-int4.bin\n• gemma-3-4b-it-cpu-int4.bin"
+                        "Supported filenames:\n• gemma-2b-it-cpu-int4.bin  (~1.35 GB)\n" +
+                        "• gemma-3-1b-it-cpu-int4.bin  (~0.8 GB)\n" +
+                        "• gemma-3-4b-it-cpu-int4.bin  (~2.5 GB)"
                 }
                 val prompt = """
                     <start_of_turn>user

@@ -4,7 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
+import java.net.URLEncoder
 
 data class ScrapedContent(
     val title: String,
@@ -19,9 +22,8 @@ object LinkScraperService {
     private const val TIMEOUT_MS = 10_000
 
     // Sites that require JavaScript or serve only boilerplate via Jsoup
+    // (YouTube and X have dedicated scrapers above and are not listed here)
     private val KNOWN_JS_DOMAINS = setOf(
-        "youtube.com", "youtu.be",
-        "twitter.com", "x.com",
         "instagram.com", "threads.net",
         "facebook.com", "fb.com",
         "tiktok.com",
@@ -42,6 +44,18 @@ object LinkScraperService {
     )
 
     suspend fun scrape(url: String): ScrapedContent = withContext(Dispatchers.IO) {
+        val domain = extractDomain(url)
+
+        // YouTube — use oEmbed API (reliable, no auth needed)
+        if (domain == "youtube.com" || domain == "youtu.be" || domain.endsWith(".youtube.com")) {
+            return@withContext scrapeYouTube(url, domain)
+        }
+
+        // X / Twitter — extract username from URL, try og:title via nitter fallback
+        if (domain == "x.com" || domain == "twitter.com" || domain.endsWith(".x.com")) {
+            return@withContext scrapeXTwitter(url, domain)
+        }
+
         try {
             val doc = Jsoup.connect(url)
                 .timeout(TIMEOUT_MS)
@@ -51,9 +65,7 @@ object LinkScraperService {
                 .followRedirects(true)
                 .get()
 
-            val domain = extractDomain(url)
-
-            // Known JS-heavy domains — Jsoup only gets homepage boilerplate, skip body
+            // Other known JS-heavy domains — Jsoup only gets homepage boilerplate, skip body
             if (KNOWN_JS_DOMAINS.any { domain == it || domain.endsWith(".$it") }) {
                 val title = doc.select("meta[property=og:title]").attr("content")
                     .ifBlank { doc.title() }.ifBlank { domain }
@@ -90,7 +102,6 @@ object LinkScraperService {
                 faviconUrl = faviconUrl
             )
         } catch (e: Exception) {
-            val domain = extractDomain(url)
             ScrapedContent(
                 title = domain,
                 description = "",
@@ -100,6 +111,70 @@ object LinkScraperService {
             )
         }
     }
+
+    /** Uses YouTube's public oEmbed API to get video title and channel name. */
+    private fun scrapeYouTube(url: String, domain: String): ScrapedContent {
+        return try {
+            val encoded = URLEncoder.encode(url, "UTF-8")
+            val conn = URL("https://www.youtube.com/oembed?url=$encoded&format=json")
+                .openConnection() as HttpURLConnection
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 8_000
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+            val body = if (conn.responseCode == 200) conn.inputStream.use { it.readBytes().decodeToString() } else ""
+            conn.disconnect()
+            val title = jsonField(body, "title")
+            val author = jsonField(body, "author_name")
+            ScrapedContent(
+                title = title?.ifBlank { null } ?: "YouTube video",
+                description = if (author != null) "by $author" else "",
+                bodyText = "",
+                domain = domain,
+                faviconUrl = "https://www.youtube.com/favicon.ico"
+            )
+        } catch (e: Exception) {
+            ScrapedContent("YouTube video", "", "", domain, "https://www.youtube.com/favicon.ico")
+        }
+    }
+
+    /** Extracts tweet author from the URL path; tries og:title via a simple HTTP fetch as well. */
+    private fun scrapeXTwitter(url: String, domain: String): ScrapedContent {
+        // URL form: https://x.com/username/status/12345 or https://twitter.com/username/...
+        val username = try {
+            URI(url).path.split("/").firstOrNull { it.isNotBlank() }
+        } catch (_: Exception) { null }
+
+        // Try fetching og:title — X serves it to crawlers (without JS)
+        val ogTitle = try {
+            val doc = Jsoup.connect(url)
+                .timeout(TIMEOUT_MS)
+                .userAgent("Twitterbot/1.0")  // X serves og tags to crawler UA
+                .followRedirects(true)
+                .get()
+            doc.select("meta[property=og:title]").attr("content")
+                .ifBlank { doc.select("meta[name=twitter:title]").attr("content") }
+                .ifBlank { null }
+        } catch (_: Exception) { null }
+
+        val title = ogTitle ?: if (username != null) "Post by @$username" else "X post"
+        return ScrapedContent(
+            title = title,
+            description = "",
+            bodyText = "",
+            domain = domain,
+            faviconUrl = "https://x.com/favicon.ico"
+        )
+    }
+
+    /** Extracts a string field from a flat JSON object using regex (avoids extra deps). */
+    private fun jsonField(json: String, key: String): String? =
+        Regex(""""${Regex.escape(key)}"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+            .find(json)?.groupValues?.get(1)
+            ?.replace("\\\"", "\"")
+            ?.replace("\\\\", "\\")
+            ?.replace("\\/", "/")
+            ?.replace("\\n", " ")
+            ?.trim()
 
     /**
      * Extract the article body text, preferring semantic content containers
