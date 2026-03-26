@@ -10,6 +10,12 @@ import java.io.File
 
 class LlmSummarizationService(private val context: Context) {
 
+    data class ModelInfo(
+        val name: String,
+        val path: String,
+        val isVision: Boolean = false
+    )
+
     private var llm: LlmInference? = null
     private var isInitialized = false
     private var initAttempted = false
@@ -33,12 +39,6 @@ class LlmSummarizationService(private val context: Context) {
             "/sdcard/Download/gemma",
             "/sdcard/Download",
             "/data/local/tmp",
-        )
-
-        data class ModelInfo(
-            val name: String,
-            val path: String,
-            val isVision: Boolean = false
         )
 
         /** Scans all known directories and returns every model file found. */
