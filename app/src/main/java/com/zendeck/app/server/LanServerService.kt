@@ -47,7 +47,7 @@ class LanServerService : Service() {
             CHANNEL_ID,
             "LAN Server",
             NotificationManager.IMPORTANCE_LOW
-        ).apply { description = "ZenDeck local network access" }
+        ).apply { description = "AI Link Triage local network access" }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
@@ -61,7 +61,7 @@ class LanServerService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("ZenDeck · LAN server active")
+            .setContentTitle("AI Link Triage · LAN server active")
             .setContentText("Open $address on your laptop")
             .setSmallIcon(android.R.drawable.ic_menu_share)
             .setContentIntent(tapIntent)

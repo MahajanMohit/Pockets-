@@ -96,20 +96,11 @@ class LinkRepository private constructor(context: Context) {
     suspend fun getArchivedLinksSnapshot(): List<LinkItem> =
         dao.getArchivedLinksOnce().map { it.toDomain() }
 
+    suspend fun getTagsForLink(id: String): List<String> =
+        dao.getLinkById(id)?.tags ?: emptyList()
+
     suspend fun importLinks(links: List<LinkItem>) =
         links.forEach { dao.insertLink(LinkItemEntity.fromDomain(it)) }
-
-    /**
-     * Merges synced links from a peer device.
-     * Skips any link whose URL already exists locally to avoid duplicates.
-     */
-    suspend fun mergeLinksFromPeer(links: List<LinkItem>) {
-        links.forEach { link ->
-            if (dao.findIdByUrl(link.url) == null) {
-                dao.insertLink(LinkItemEntity.fromDomain(link))
-            }
-        }
-    }
 
     companion object {
         @Volatile

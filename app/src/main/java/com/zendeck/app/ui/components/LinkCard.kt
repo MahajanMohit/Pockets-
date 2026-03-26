@@ -120,7 +120,12 @@ fun LinkCard(
                     RatingBadge(it)
                     Spacer(Modifier.width(4.dp))
                 }
-                TTLBadge(link.urgencyFraction, link.timeUntilExpiry)
+                val archiveCountdown = link.timeUntilArchiveDeletion
+                if (archiveCountdown != null) {
+                    DeletionBadge(archiveCountdown)
+                } else {
+                    TTLBadge(link.urgencyFraction, link.timeUntilExpiry)
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -237,6 +242,19 @@ private fun RatingBadge(rating: ReadingRating) {
             style = MaterialTheme.typography.labelSmall,
             color = color,
             modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun DeletionBadge(countdown: String) {
+    val c = LocalZenDeckColors.current
+    Surface(shape = RoundedCornerShape(4.dp), color = c.textDisabled.copy(alpha = 0.12f)) {
+        Text(
+            text = countdown,
+            style = MaterialTheme.typography.labelSmall,
+            color = c.textDisabled,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }

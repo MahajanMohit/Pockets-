@@ -43,6 +43,7 @@ fun InboxScreen(
     val searchQuery by inboxViewModel.inboxSearch.collectAsStateWithLifecycle()
     val ratings by inboxViewModel.inboxRatings.collectAsStateWithLifecycle()
     val modelAvailable by inboxViewModel.modelAvailable.collectAsStateWithLifecycle()
+    val activeLinkCount by inboxViewModel.activeLinkCount.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val c = LocalZenDeckColors.current
 
@@ -63,6 +64,34 @@ fun InboxScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
+        // ── Header row ────────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 0.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Inbox",
+                style = MaterialTheme.typography.headlineMedium,
+                color = c.textPrimary,
+                modifier = Modifier.weight(1f)
+            )
+            if (activeLinkCount > 0) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = AccentTeal.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = "$activeLinkCount links",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = AccentTeal,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
         // ── Search bar ────────────────────────────────────────────────────────
         OutlinedTextField(
             value = searchQuery,
@@ -208,7 +237,13 @@ fun InboxScreen(
                 inboxViewModel.recordLinkSkip(link)
                 if (expandedLinkId == link.id) expandedLinkId = null
                 actionSheetLink = null
-            }
+            },
+            onResummarize = if (modelAvailable) {
+                {
+                    inboxViewModel.resummarizeLink(link)
+                    actionSheetLink = null
+                }
+            } else null
         )
     }
 
@@ -275,7 +310,7 @@ private fun InboxEmptyState() {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "Share any link to ZenDeck to start saving.\nSwipe left to archive · double-tap to open.",
+            text = "Share any link to AI Link Triage to start saving.\nSwipe left to archive · double-tap to open.",
             style = MaterialTheme.typography.bodyMedium,
             color = c.textSecondary,
             textAlign = TextAlign.Center

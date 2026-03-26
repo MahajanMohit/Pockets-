@@ -50,7 +50,7 @@ class ZenDeckWidget : GlanceAppWidget() {
                 verticalAlignment = Alignment.Vertical.Top
             ) {
                 Text(
-                    text = "ZenDeck",
+                    text = "AI Link Triage",
                     style = TextStyle(
                         color = ColorProvider(Color(0xFF00897B)),
                         fontSize = 11.sp,

@@ -1,6 +1,7 @@
 package com.zendeck.app.service
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
@@ -14,32 +15,60 @@ class LlmSummarizationService(private val context: Context) {
     private var initAttempted = false
     private var initFailReason = ""
     private var lastCandidatePaths: List<String> = emptyList()
-    private var lastLoadErrors: List<String> = emptyList() // actual exception messages per candidate
+    private var lastLoadErrors: List<String> = emptyList()
+    private var preferredModelPath: String? = null
 
     companion object {
         private const val TAG = "LlmSummarizationService"
         private const val MAX_TOKENS = 1024
 
         private val MODEL_FILENAMES = listOf(
-            "gemma-3-4b-it-cpu-int4.bin",   // Gemma 3 4B CPU – best quality
-            "gemma-3-1b-it-cpu-int4.bin",   // Gemma 3 1B CPU – fast, good quality
-            "gemma-2b-it-cpu-int4.bin",     // Gemma 2B CPU – reliable on all devices
+            "gemma-3-4b-it-cpu-int4.bin",
+            "gemma-3-1b-it-cpu-int4.bin",
+            "gemma-2b-it-cpu-int4.bin",
         )
 
         private val SEARCH_DIRS = listOf(
-            "/storage/emulated/0/Download/gemma",  // actual path from device
-            "/sdcard/Download/gemma",               // symlink variant
+            "/storage/emulated/0/Download/gemma",
+            "/sdcard/Download/gemma",
             "/sdcard/Download",
             "/data/local/tmp",
         )
+
+        data class ModelInfo(
+            val name: String,
+            val path: String,
+            val isVision: Boolean = false
+        )
+
+        /** Scans all known directories and returns every model file found. */
+        fun discoverModels(context: Context): List<ModelInfo> {
+            val dirs = buildList {
+                add(context.filesDir)
+                context.getExternalFilesDir("models")?.let { add(it) }
+                addAll(SEARCH_DIRS.map { File(it) })
+            }
+            return dirs.flatMap { dir ->
+                dir.listFiles()?.filter { f ->
+                    f.isFile && (f.name.endsWith(".bin") || f.name.endsWith(".task") || f.name.endsWith(".gguf"))
+                }?.map { f ->
+                    ModelInfo(
+                        name = f.name,
+                        path = f.absolutePath,
+                        isVision = f.name.contains("vision", ignoreCase = true) ||
+                                   f.name.contains("vit", ignoreCase = true) ||
+                                   f.name.contains("multimodal", ignoreCase = true)
+                    )
+                } ?: emptyList()
+            }.distinctBy { it.path }
+        }
 
         /** Returns true if any supported model file exists on disk. */
         fun hasModel(context: Context): Boolean = getActiveModelName(context) != null
 
         /**
          * Returns the filename of the highest-priority model file that currently exists
-         * on disk (same search order as initialization), or null if none found.
-         * Used by the UI to display which model is active.
+         * on disk, or null if none found.
          */
         fun getActiveModelName(context: Context): String? {
             val dirs = buildList {
@@ -52,14 +81,29 @@ class LlmSummarizationService(private val context: Context) {
                     if (File(dir, name).exists()) return name
                 }
             }
-            return null
+            // Also return any other .bin file discovered
+            return discoverModels(context).firstOrNull()?.name
+        }
+    }
+
+    /**
+     * Sets a specific model path to prefer. Resets the service so the next
+     * inference call loads the preferred model.
+     */
+    fun setPreferredModelPath(path: String?) {
+        if (path != preferredModelPath) {
+            preferredModelPath = path
+            llm?.close()
+            llm = null
+            isInitialized = false
+            initAttempted = false
+            lastCandidatePaths = emptyList()
         }
     }
 
     private fun initialize() {
         if (isInitialized) return
         val candidates = findAllModelPaths()
-        // Skip only if we already tried with these exact files — re-run if new files appeared
         if (initAttempted && candidates == lastCandidatePaths) return
         initAttempted = true
         lastCandidatePaths = candidates
@@ -69,7 +113,6 @@ class LlmSummarizationService(private val context: Context) {
             Log.w(TAG, "No model file found in any search directory")
             return
         }
-        // Try each candidate in priority order; GPU models may fail on unsupported devices
         val errors = mutableListOf<String>()
         for (path in candidates) {
             try {
@@ -102,16 +145,25 @@ class LlmSummarizationService(private val context: Context) {
             context.getExternalFilesDir("models")?.let { add(it) }
             addAll(SEARCH_DIRS.map { File(it) })
         }
-        return MODEL_FILENAMES.flatMap { name ->
+        val preferred = preferredModelPath?.let { p ->
+            if (File(p).exists()) listOf(p) else emptyList()
+        } ?: emptyList()
+        val rest = MODEL_FILENAMES.flatMap { name ->
             searchDirs.mapNotNull { dir ->
                 val f = File(dir, name)
-                if (f.exists()) { Log.i(TAG, "Found model candidate: ${f.absolutePath}"); f.absolutePath }
-                else null
+                if (f.exists() && f.absolutePath !in preferred) {
+                    Log.i(TAG, "Found model candidate: ${f.absolutePath}")
+                    f.absolutePath
+                } else null
             }
         }
+        // If preferred not in the hardcoded list, also include any discovered models
+        val discovered = discoverModels(context)
+            .map { it.path }
+            .filter { it !in preferred && it !in rest }
+        return preferred + rest + discovered
     }
 
-    // Kept for callers that still reference findModelPath() conceptually; returns first candidate.
     private fun findModelPath(): String? = findAllModelPaths().firstOrNull()
 
     /**
@@ -137,41 +189,68 @@ class LlmSummarizationService(private val context: Context) {
     }
 
     /**
+     * Rates an article as "must", "worth", or "skip" based on title and summary.
+     * Returns null if no model is loaded or inference fails.
+     */
+    suspend fun rateArticle(title: String, summary: String): String? {
+        if (title.isBlank() && summary.isBlank()) return null
+        return withContext(Dispatchers.Default) {
+            try {
+                initialize()
+                val inference = llm ?: return@withContext null
+                val prompt = """
+                    <start_of_turn>user
+                    Based on this article's title and summary, rate it as exactly one of: must / worth / skip
+                    Rules:
+                    - "must": contains genuinely new information, timely insight, or practical value
+                    - "worth": interesting but not urgent, safe to read when convenient
+                    - "skip": generic, clickbait, low-information, or promotional
+                    Only output one word, nothing else.
+
+                    Title: $title
+                    Summary: ${summary.take(500)}
+                    <end_of_turn>
+                    <start_of_turn>model
+                """.trimIndent()
+                val response = inference.generateResponse(prompt).trim().lowercase()
+                val firstWord = response.split(Regex("\\s+")).firstOrNull() ?: ""
+                when {
+                    firstWord.startsWith("must")  -> "must"
+                    firstWord.startsWith("skip")  -> "skip"
+                    firstWord.startsWith("worth") -> "worth"
+                    else -> null
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "rateArticle failed: ${e.message}")
+                null
+            }
+        }
+    }
+
+    /**
      * Sentence-extraction fallback when no LLM model is installed.
-     *
-     * Scores each sentence and picks up to 3 best:
-     * - 60–280 chars (avoids labels and run-ons)
-     * - At least 10 words
-     * - Not matching any boilerplate phrase
      */
     private fun fallbackSummarize(text: String): String {
         val boilerplate = listOf(
-            // Generic web boilerplate
             "subscribe", "newsletter", "sign up", "sign in", "log in", "login",
             "register", "create account", "forgot password",
             "privacy policy", "terms of service", "terms and conditions",
             "all rights reserved", "copyright ©", "cookie", "advertisement",
             "sponsored", "click here", "read more", "learn more", "find out more",
             "by continuing",
-            // Social sharing / engagement
             "share your videos", "share with friends", "share with family",
             "friends, family", "share this", "follow us", "follow me",
             "like and subscribe", "hit the bell", "comment below",
             "check out my", "for more videos", "don't miss", "watch now",
             "stream now", "listen now", "watch later", "add to queue",
             "tweet", "facebook", "instagram", "patreon", "merch",
-            // Ads / affiliate
             "affiliate", "discount code", "use code", "sponsored by",
             "this post contains", "as an amazon associate",
-            // App install prompts
             "get it on google play", "download the app", "get the app",
             "available on", "play store", "app store",
-            // Discovery / pagination
             "you might also like", "related articles", "recommended for you",
             "view all", "see all", "load more", "show more",
-            // Comments section
             "add a comment", "report abuse", "flag as",
-            // Tech boilerplate
             "javascript", "enable javascript", "browser", "reload", "refresh",
             "noscript"
         )
@@ -195,7 +274,6 @@ class LlmSummarizationService(private val context: Context) {
     private fun buildPrompt(text: String, memoryContext: String, customPrompt: String = ""): String {
         val truncated = text.take(3000)
 
-        // If user provided a custom prompt, use it verbatim with the article appended
         if (customPrompt.isNotBlank()) {
             return """
                 <start_of_turn>user
@@ -227,14 +305,19 @@ class LlmSummarizationService(private val context: Context) {
         return raw.trim()
     }
 
-    /** Returns true if the model loaded successfully (i.e. LLM inference is active). */
+    /** Returns true if the model loaded successfully. */
     fun isLlmLoaded(): Boolean = isInitialized && llm != null
 
     /**
-     * Sends an arbitrary [message] to the model and returns the raw response.
-     * Useful for verifying inference works or for the Chat screen.
+     * Sends a message to the model with optional article context and image URI.
+     * Article context feeds the user's saved reading list to the model.
+     * Image URI is included as a path reference (text-based for CPU-only models).
      */
-    suspend fun chat(message: String): String {
+    suspend fun chat(
+        message: String,
+        articleContext: String = "",
+        imageUri: Uri? = null
+    ): String {
         if (message.isBlank()) return ""
         return withContext(Dispatchers.Default) {
             try {
@@ -245,7 +328,7 @@ class LlmSummarizationService(private val context: Context) {
                         append("Errors:\n")
                         lastLoadErrors.forEach { append("• $it\n") }
                         append("\nCommon causes:\n")
-                        append("• Storage permission denied (grant 'All files access' in Android Settings > Apps > ZenDeck > Permissions)\n")
+                        append("• Storage permission denied (grant 'All files access' in Android Settings > Apps > AI Link Triage > Permissions)\n")
                         append("• GPU model on unsupported device — use gemma-2b-it-cpu-int4.bin\n")
                         append("• Not enough RAM to load the model\n")
                         append("• Model file corrupted (re-download it)")
@@ -257,19 +340,44 @@ class LlmSummarizationService(private val context: Context) {
                         "• gemma-3-1b-it-cpu-int4.bin  (~0.8 GB)\n" +
                         "• gemma-3-4b-it-cpu-int4.bin  (~2.5 GB)"
                 }
+
+                val systemPreamble = buildChatSystemPrompt(articleContext)
+                val userContent = buildString {
+                    if (imageUri != null) {
+                        append("[Image attached: ${imageUri.lastPathSegment}]\n")
+                    }
+                    append(message.trim())
+                }
+
                 val prompt = """
                     <start_of_turn>user
-                    You are a helpful reading assistant. When the user pastes or describes any text or article, summarise it in 5 to 6 concise bullet points, each capturing one key idea. Use clear, precise language. If the user asks a direct question instead, answer it directly without bullet points.
+                    $systemPreamble
 
-                    ${message.trim()}
+                    $userContent
                     <end_of_turn>
                     <start_of_turn>model
                 """.trimIndent()
+
                 inference.generateResponse(prompt).trim()
             } catch (e: Exception) {
                 Log.w(TAG, "Chat inference failed: ${e.message}")
                 "Error during inference: ${e.message}"
             }
+        }
+    }
+
+    private fun buildChatSystemPrompt(articleContext: String): String {
+        return if (articleContext.isNotBlank()) {
+            """
+You are the user's personal reading assistant with access to their saved reading list.
+Their current saved articles:
+$articleContext
+
+Answer their questions about these articles, help them prioritise what to read,
+identify themes, or answer any other question. Be concise and direct.
+            """.trimIndent()
+        } else {
+            "You are a helpful AI assistant. Be concise and direct in your answers."
         }
     }
 
@@ -280,5 +388,6 @@ class LlmSummarizationService(private val context: Context) {
         initAttempted = false
         initFailReason = ""
         lastCandidatePaths = emptyList()
+        preferredModelPath = null
     }
 }

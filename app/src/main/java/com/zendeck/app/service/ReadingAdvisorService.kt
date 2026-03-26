@@ -22,13 +22,22 @@ import com.zendeck.app.domain.model.ReadingRating
 object ReadingAdvisorService {
 
     fun rate(link: LinkItem, memory: MemoryData): ReadingRating? {
+        // AI tag takes priority over heuristics
+        val aiTag = link.tags.firstOrNull { it.startsWith("ai:") }?.removePrefix("ai:")
+        if (aiTag != null) return when (aiTag) {
+            "must"  -> ReadingRating.DEFINITELY_READ
+            "skip"  -> ReadingRating.CAN_SKIP
+            else    -> ReadingRating.GOOD_TO_READ
+        }
+
         // Need at least 5 interactions before making suggestions
         val totalActions = memory.totalOpened + memory.totalSkipped
         if (totalActions < 5) return null
 
         val domainOpened  = memory.openedDomains[link.domain] ?: 0
         val domainSkipped = memory.skippedDomains[link.domain] ?: 0
-        val tagScore = link.tags.sumOf { memory.openedTags[it] ?: 0 }
+        // Exclude internal ai: tags from topic scoring
+        val tagScore = link.tags.filter { !it.startsWith("ai:") }.sumOf { memory.openedTags[it] ?: 0 }
 
         val domainTotal = domainOpened + domainSkipped
         val engagementRatio = if (domainTotal > 0)

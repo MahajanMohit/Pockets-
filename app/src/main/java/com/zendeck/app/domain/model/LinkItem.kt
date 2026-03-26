@@ -47,4 +47,20 @@ data class LinkItem(
                 else -> "${minutes}m"
             }
         }
+
+    /** How long until auto-deletion from archive (72h after archiving). Null if not archived. */
+    @Transient val timeUntilArchiveDeletion: String?
+        get() {
+            if (!isArchived || archivedAt == 0L) return null
+            val deleteAt = archivedAt + 72 * 3_600_000L
+            val remaining = deleteAt - System.currentTimeMillis()
+            if (remaining <= 0) return "Deleting soon"
+            val hours = remaining / 3_600_000
+            val minutes = (remaining % 3_600_000) / 60_000
+            return when {
+                hours >= 24 -> "Deletes in ${hours / 24}d ${hours % 24}h"
+                hours > 0   -> "Deletes in ${hours}h ${minutes}m"
+                else        -> "Deletes in ${minutes}m"
+            }
+        }
 }

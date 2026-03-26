@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ZenDeck</string>
+    <string name="app_name">AI Link Triage</string>
     <string name="widget_description">Shows your most urgent saved link</string>
-    <string name="share_activity_label">Save to ZenDeck</string>
+    <string name="share_activity_label">Save to AI Link Triage</string>
     <string name="inbox_empty_title">Inbox Zero</string>
-    <string name="inbox_empty_body">Share any link to ZenDeck to start reading.</string>
+    <string name="inbox_empty_body">Share any link to AI Link Triage to start reading.</string>
     <string name="swipe_right_hint">Swipe right to open · Swipe left to archive · Long press to edit</string>
 </resources>

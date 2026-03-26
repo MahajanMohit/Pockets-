@@ -41,7 +41,7 @@ class ModelDownloadWorker(
 
         val dm = appContext.getSystemService(DownloadManager::class.java)
         val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("ZenDeck AI Model")
+            .setTitle("AI Link Triage – AI Model")
             .setDescription("Downloading Gemma model for AI summaries (≈1.1 GB)…")
             .setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED

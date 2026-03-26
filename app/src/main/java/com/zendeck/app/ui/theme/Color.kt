@@ -9,9 +9,9 @@ val AccentTealDim = Color(0xFF00695C)
 val SlateGray = Color(0xFF607D8B)
 
 // TTL Urgency colors (same in both themes)
-val UrgencyFresh = Color(0xFF388E3C)
-val UrgencyWarning = Color(0xFFF9A825)
-val UrgencyCritical = Color(0xFFD32F2F)
+val UrgencyFresh = Color(0xFF81C784)     // soft sage green  (Material Green 300)
+val UrgencyWarning = Color(0xFFFFB74D)   // warm sandy amber (Material Orange 300)
+val UrgencyCritical = Color(0xFFE57373)  // dusty rose red   (Material Red 300)
 
 val SwipeGreenBackground = Color(0xFF1B5E20)
 val SwipeRedBackground = Color(0xFFB71C1C)
@@ -42,14 +42,14 @@ fun darkZenDeckColors() = ZenDeckColors(
 )
 
 fun lightZenDeckColors() = ZenDeckColors(
-    background    = Color(0xFFFFFFFF),
-    surface       = Color(0xFFF5F5F5),
-    cardBackground = Color(0xFFFFFFFF),
-    cardBorder    = Color(0xFFDDE3E7),
-    textPrimary   = Color(0xFF1C2B2A),
+    background    = Color(0xFFFAF7F2),   // warm cream
+    surface       = Color(0xFFEEE9E0),   // warm off-white
+    cardBackground = Color(0xFFFFFFFF),  // white cards float on cream
+    cardBorder    = Color(0xFFB2DFDB),   // light teal (Material Teal 100)
+    textPrimary   = Color(0xFF1C2B2A),   // dark teal-tinted
     textSecondary = Color(0xFF546E7A),
     textDisabled  = Color(0xFF90A4AE),
-    divider       = Color(0xFFE0E0E0),
+    divider       = Color(0xFFD6CFC6),   // warm gray
     slateGrayLight = Color(0xFF546E7A),
 )
 

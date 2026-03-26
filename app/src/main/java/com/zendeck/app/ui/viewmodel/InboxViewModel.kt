@@ -64,6 +64,12 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
             )
     }
 
+    // ── Article count ─────────────────────────────────────────────────────────
+
+    val activeLinkCount: StateFlow<Int> = repo
+        .getActiveLinkCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     // ── Base link flows ───────────────────────────────────────────────────────
 
     private val allActiveLinks: StateFlow<List<LinkItem>> = repo
@@ -145,6 +151,27 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteLink(id: String) = viewModelScope.launch { repo.deleteLink(id) }
 
     fun restoreLink(id: String) = viewModelScope.launch { repo.restoreLink(id) }
+
+    fun resummarizeLink(link: LinkItem) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val scraped = com.zendeck.app.service.LinkScraperService.scrape(link.url)
+            if (scraped.bodyText.isBlank()) return@launch
+            val llm = LlmSummarizationService(getApplication())
+            val summary = llm.summarize(scraped.bodyText)
+            if (summary.isNotBlank()) {
+                repo.updateSummary(link.id, summary)
+                val rating = llm.rateArticle(scraped.title.ifBlank { link.title }, summary)
+                if (rating != null) {
+                    val current = repo.getTagsForLink(link.id)
+                    val filtered = current.filter { !it.startsWith("ai:") }
+                    repo.updateTags(link.id, filtered + "ai:$rating")
+                }
+            }
+            llm.close()
+        } catch (e: Exception) {
+            android.util.Log.w("InboxViewModel", "resummarizeLink failed: ${e.message}")
+        }
+    }
 
     fun openInCustomTab(context: Context, url: String) {
         try {

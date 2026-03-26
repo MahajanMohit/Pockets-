@@ -39,8 +39,6 @@ fun SettingsScreen(
     val aiEnabled       by viewModel.aiSummariesEnabled.collectAsStateWithLifecycle()
     val customPrompt    by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
     val importStatus    by viewModel.importStatus.collectAsStateWithLifecycle()
-    val syncPeerIp      by viewModel.syncPeerIp.collectAsStateWithLifecycle()
-    val syncStatus      by viewModel.syncStatus.collectAsStateWithLifecycle()
     val c               = LocalZenDeckColors.current
     val clipboard       = LocalClipboardManager.current
 
@@ -227,7 +225,7 @@ fun SettingsScreen(
                 Text("   • gemma-3-1b-it-cpu-int4.bin    (smaller/faster, ~0.8 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 Text("   • gemma-3-4b-it-cpu-int4.bin    (best quality, ~2.5 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 Text("3. OR use the 'Import model file' button above to pick the file directly — no folder needed.", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
-                Text("4. On Android 11+ you may need to grant 'All files access' in:\n   Settings → Apps → ZenDeck → Permissions", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                Text("4. On Android 11+ you may need to grant 'All files access' in:\n   Settings → Apps → AI Link Triage → Permissions", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 Spacer(Modifier.height(4.dp))
                 Text("After setup go to Chat AI tab and type anything to verify.", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
             }
@@ -241,7 +239,7 @@ fun SettingsScreen(
         // ── AI Summaries ────────────────────────────────────────────────────
         SectionHeader("AI Summaries", c)
         Text(
-            "When enabled, ZenDeck summarises each saved link using the on-device AI model. " +
+            "When enabled, AI Link Triage summarises each saved link using the on-device AI model. " +
             "Turn off to use just the page title and description, or to compare output quality.",
             style = MaterialTheme.typography.bodySmall, color = c.textSecondary
         )
@@ -311,89 +309,6 @@ fun SettingsScreen(
                     )
                 }
             }
-        }
-
-        Divider(c)
-
-        // ── Device Sync ─────────────────────────────────────────────────────
-        SectionHeader("Device Sync", c)
-        Text(
-            "Share links instantly between two devices on the same WiFi. " +
-            "Enter the IP address of the other device (shown in its LAN Access section).",
-            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-        )
-        Spacer(Modifier.height(12.dp))
-
-        var peerIpDraft by remember(syncPeerIp) { mutableStateOf(syncPeerIp) }
-        OutlinedTextField(
-            value = peerIpDraft,
-            onValueChange = { peerIpDraft = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Peer device IP", style = MaterialTheme.typography.bodySmall) },
-            placeholder = { Text("e.g. 192.168.1.42", style = MaterialTheme.typography.bodySmall, color = c.textSecondary) },
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentTeal,
-                unfocusedBorderColor = c.textSecondary.copy(alpha = 0.4f),
-                focusedTextColor = c.textPrimary,
-                unfocusedTextColor = c.textPrimary,
-                cursorColor = AccentTeal
-            ),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { viewModel.setSyncPeerIp(peerIpDraft) },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
-            ) { Text("Save IP") }
-            OutlinedButton(
-                onClick = { viewModel.syncFromPeer() },
-                enabled = syncStatus !is SettingsViewModel.SyncStatus.Syncing && syncPeerIp.isNotBlank(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
-            ) {
-                if (syncStatus is SettingsViewModel.SyncStatus.Syncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(14.dp),
-                        strokeWidth = 2.dp,
-                        color = AccentTeal
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Syncing…")
-                } else {
-                    Icon(Icons.Default.Sync, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Pull from peer")
-                }
-            }
-        }
-        when (val s = syncStatus) {
-            is SettingsViewModel.SyncStatus.Done -> {
-                Text(
-                    "✓ Pulled ${s.count} link(s) from peer",
-                    style = MaterialTheme.typography.bodySmall, color = AccentTeal,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                LaunchedEffect(s) { kotlinx.coroutines.delay(4_000); viewModel.clearSyncStatus() }
-            }
-            is SettingsViewModel.SyncStatus.Failed -> {
-                Text(
-                    "Sync failed: ${s.error}",
-                    style = MaterialTheme.typography.bodySmall, color = UrgencyWarning,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                LaunchedEffect(s) { kotlinx.coroutines.delay(6_000); viewModel.clearSyncStatus() }
-            }
-            else -> {}
-        }
-        if (syncPeerIp.isNotBlank()) {
-            Text(
-                "New links you save will also be pushed to $syncPeerIp automatically.",
-                style = MaterialTheme.typography.labelSmall, color = c.textDisabled,
-                modifier = Modifier.padding(top = 6.dp)
-            )
         }
 
         Divider(c)
@@ -473,7 +388,7 @@ fun SettingsScreen(
         Divider(c)
 
         // ── App info ────────────────────────────────────────────────────────
-        Text("ZenDeck v1.0", style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
+        Text("AI Link Triage v1.0", style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
         Text("All data stored locally. No tracking, no cloud AI, no ads.",
             style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
         Spacer(Modifier.height(4.dp))

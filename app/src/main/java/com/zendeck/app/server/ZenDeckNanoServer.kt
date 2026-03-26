@@ -34,9 +34,7 @@ class ZenDeckNanoServer(
         session.method == Method.GET  && session.uri == "/"                    -> serveHtml()
         session.method == Method.GET  && session.uri == "/api/links"           -> serveLinks(archived = false)
         session.method == Method.GET  && session.uri == "/api/links/archived"  -> serveLinks(archived = true)
-        session.method == Method.GET  && session.uri == "/api/links/all"       -> serveAllLinks()
         session.method == Method.POST && session.uri == "/api/links"           -> ingestLink(session)
-        session.method == Method.POST && session.uri == "/api/sync/push"       -> syncPush(session)
         session.method == Method.OPTIONS                                        -> optionsResponse()
         else -> newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found")
     }
@@ -82,27 +80,6 @@ class ZenDeckNanoServer(
         return newFixedLengthResponse(statusCode, "application/json", """{"id":"$id","isNew":$isNew}""")
     }
 
-    private fun serveAllLinks(): Response {
-        val links: List<LinkItem> = runBlocking { repo.getAllLinks() }
-        return newFixedLengthResponse(Response.Status.OK, "application/json", json.encodeToString(links))
-    }
-
-    /** Receives a JSON array of LinkItems from a peer device and upserts them locally. */
-    private fun syncPush(session: IHTTPSession): Response {
-        val body = HashMap<String, String>()
-        session.parseBody(body)
-        val postData = body["postData"] ?: body.values.firstOrNull() ?: ""
-        return try {
-            val links = Json.decodeFromString<List<LinkItem>>(postData)
-            runBlocking { repo.mergeLinksFromPeer(links) }
-            Log.i(TAG, "Sync push: received ${links.size} link(s) from peer")
-            newFixedLengthResponse(Response.Status.OK, "application/json", """{"synced":${links.size}}""")
-        } catch (e: Exception) {
-            Log.e(TAG, "Sync push failed: ${e.message}")
-            newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Invalid link data: ${e.message}")
-        }
-    }
-
     private fun optionsResponse(): Response =
         newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "").also {
             it.addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -119,7 +96,7 @@ class ZenDeckNanoServer(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ZenDeck</title>
+<title>AI Link Triage</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d0d0d;color:#e0e0e0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px;max-width:700px;margin:0 auto}
@@ -150,7 +127,7 @@ h1{color:#00897b;font-size:22px;font-weight:600;margin-bottom:18px;display:flex;
 </style>
 </head>
 <body>
-<h1>⚡ ZenDeck</h1>
+<h1>⚡ AI Link Triage</h1>
 <div class="add-bar">
   <input id="urlInput" type="url" placeholder="Paste a URL to save to phone…" autocomplete="off">
   <button id="saveBtn" onclick="saveLink()">Save</button>
@@ -209,7 +186,7 @@ function saveLink(){
     })
     .then(function(d){
       document.getElementById('urlInput').value='';
-      toast(d.isNew?'Saved to ZenDeck ✓':'Already in ZenDeck');
+      toast(d.isNew?'Saved ✓':'Already saved');
       if(currentTab==='inbox')load();
     })
     .catch(function(){toast('Failed to save link',true)})

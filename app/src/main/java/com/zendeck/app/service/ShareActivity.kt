@@ -8,15 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.lifecycle.lifecycleScope
 import com.zendeck.app.data.repository.LinkRepository
-import com.zendeck.app.server.ZenDeckNanoServer
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import java.net.HttpURLConnection
-import java.net.URL
 
 class ShareActivity : ComponentActivity() {
 
@@ -40,7 +34,7 @@ class ShareActivity : ComponentActivity() {
             return
         }
 
-        Toast.makeText(this, "Saving to ZenDeck…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Saving…", Toast.LENGTH_SHORT).show()
 
         lifecycleScope.launch {
             try {
@@ -56,7 +50,7 @@ class ShareActivity : ComponentActivity() {
                 )
 
                 if (!isNew) {
-                    Toast.makeText(this@ShareActivity, "Already in ZenDeck", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@ShareActivity, "Already saved", Toast.LENGTH_SHORT).show()
                     finish()
                     return@launch
                 }
@@ -67,19 +61,17 @@ class ShareActivity : ComponentActivity() {
                     val summary = llmService.summarize(scraped.bodyText, customPrompt = customPrompt)
                     if (summary.isNotBlank()) {
                         repository.updateSummary(id, summary)
+                        // AI quality rating stored as tag for triage
+                        val rating = llmService.rateArticle(scraped.title, summary)
+                        if (rating != null) {
+                            val current = repository.getTagsForLink(id)
+                            val filtered = current.filter { !it.startsWith("ai:") }
+                            repository.updateTags(id, filtered + "ai:$rating")
+                        }
                     }
                 }
 
-                Toast.makeText(this@ShareActivity, "Saved to ZenDeck ✓", Toast.LENGTH_SHORT).show()
-
-                // Push to peer device if one is configured
-                val peerIp = getSyncPeerIp()
-                if (peerIp.isNotBlank()) {
-                    val savedLink = repository.getInboxLinksSnapshot().firstOrNull { it.url == url }
-                    if (savedLink != null) {
-                        launch(Dispatchers.IO) { pushLinkToPeer(savedLink, peerIp) }
-                    }
-                }
+                Toast.makeText(this@ShareActivity, "Saved ✓", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@ShareActivity, "Error saving link", Toast.LENGTH_SHORT).show()
             } finally {
@@ -114,32 +106,6 @@ class ShareActivity : ComponentActivity() {
             val dataStore = (application as? com.zendeck.app.ZenDeckApplication)?.dataStore
             dataStore?.data?.first()?.get(SettingsViewModel.KEY_CUSTOM_PROMPT) ?: ""
         } catch (e: Exception) { "" }
-    }
-
-    private suspend fun getSyncPeerIp(): String {
-        return try {
-            val dataStore = (application as? com.zendeck.app.ZenDeckApplication)?.dataStore
-            dataStore?.data?.first()?.get(SettingsViewModel.KEY_SYNC_PEER_IP) ?: ""
-        } catch (e: Exception) { "" }
-    }
-
-    private fun pushLinkToPeer(link: com.zendeck.app.domain.model.LinkItem, peerIp: String) {
-        try {
-            val url = URL("http://$peerIp:${ZenDeckNanoServer.PORT}/api/sync/push")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            conn.connectTimeout = 5_000
-            conn.readTimeout = 10_000
-            val body = Json.encodeToString(listOf(link))
-            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            val code = conn.responseCode
-            conn.disconnect()
-            Log.i("ShareActivity", "Pushed link to peer $peerIp → HTTP $code")
-        } catch (e: Exception) {
-            Log.w("ShareActivity", "Push to peer $peerIp failed: ${e.message}")
-        }
     }
 
     override fun onDestroy() {
