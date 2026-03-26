@@ -119,9 +119,6 @@ class LlmSummarizationService(private val context: Context) {
                 val options = LlmInference.LlmInferenceOptions.builder()
                     .setModelPath(path)
                     .setMaxTokens(MAX_TOKENS)
-                    .setTopK(40)
-                    .setTemperature(0.8f)
-                    .setRandomSeed(101)
                     .build()
                 llm = LlmInference.createFromOptions(context, options)
                 isInitialized = true
