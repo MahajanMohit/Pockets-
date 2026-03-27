@@ -65,6 +65,9 @@ class LinkRepository private constructor(context: Context) {
     suspend fun updateSummary(id: String, summary: String) =
         dao.updateSummary(id, summary)
 
+    suspend fun updateLinkMetadata(id: String, title: String, description: String, domain: String, faviconUrl: String) =
+        dao.updateLinkMetadata(id, title, description, domain, faviconUrl)
+
     suspend fun archiveLink(id: String) =
         dao.archiveLink(id, System.currentTimeMillis())
 

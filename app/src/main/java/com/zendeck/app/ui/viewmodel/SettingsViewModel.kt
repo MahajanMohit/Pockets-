@@ -35,11 +35,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val repo = LinkRepository.getInstance(application)
 
     companion object {
-        val KEY_TTL_HOURS     = longPreferencesKey("ttl_hours")
-        val KEY_DARK_MODE     = booleanPreferencesKey("dark_mode")
-        val KEY_AI_SUMMARIES  = booleanPreferencesKey("ai_summaries_enabled")
-        val KEY_CUSTOM_PROMPT = stringPreferencesKey("custom_summary_prompt")
-        val TTL_OPTIONS       = listOf(24L, 48L, 72L, 168L)
+        val KEY_TTL_HOURS            = longPreferencesKey("ttl_hours")
+        val KEY_DARK_MODE            = booleanPreferencesKey("dark_mode")
+        val KEY_AI_SUMMARIES         = booleanPreferencesKey("ai_summaries_enabled")
+        val KEY_CUSTOM_PROMPT        = stringPreferencesKey("custom_summary_prompt")
+        val KEY_SELECTED_MODEL_PATH  = stringPreferencesKey("selected_model_path")
+        val TTL_OPTIONS              = listOf(24L, 48L, 72L, 168L)
         private const val TAG = "SettingsViewModel"
     }
 
@@ -144,6 +145,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             Log.i(TAG, "Model imported → ${dest.absolutePath}")
             _importStatus.value = ImportStatus.Done(fileName)
             _activeModelName.value = LlmSummarizationService.getActiveModelName(getApplication())
+            dataStore.edit { prefs -> prefs[KEY_SELECTED_MODEL_PATH] = dest.absolutePath }
         } catch (e: Exception) {
             Log.e(TAG, "Model import failed: ${e.message}")
             _importStatus.value = ImportStatus.Failed(e.message ?: "Unknown error")

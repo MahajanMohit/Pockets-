@@ -23,16 +23,11 @@ class LlmSummarizationService(private val context: Context) {
     private var lastCandidatePaths: List<String> = emptyList()
     private var lastLoadErrors: List<String> = emptyList()
     private var preferredModelPath: String? = null
+    private var loadedModelPath: String? = null
 
     companion object {
         private const val TAG = "LlmSummarizationService"
         private const val MAX_TOKENS = 1024
-
-        private val MODEL_FILENAMES = listOf(
-            "gemma-3-4b-it-cpu-int4.bin",
-            "gemma-3-1b-it-cpu-int4.bin",
-            "gemma-2b-it-cpu-int4.bin",
-        )
 
         private val SEARCH_DIRS = listOf(
             "/storage/emulated/0/Download/gemma",
@@ -70,20 +65,8 @@ class LlmSummarizationService(private val context: Context) {
          * Returns the filename of the highest-priority model file that currently exists
          * on disk, or null if none found.
          */
-        fun getActiveModelName(context: Context): String? {
-            val dirs = buildList {
-                add(context.filesDir)
-                context.getExternalFilesDir("models")?.let { add(it) }
-                addAll(SEARCH_DIRS.map { File(it) })
-            }
-            for (name in MODEL_FILENAMES) {
-                for (dir in dirs) {
-                    if (File(dir, name).exists()) return name
-                }
-            }
-            // Also return any other .bin file discovered
-            return discoverModels(context).firstOrNull()?.name
-        }
+        fun getActiveModelName(context: Context): String? =
+            discoverModels(context).firstOrNull()?.name
     }
 
     /**
@@ -122,6 +105,7 @@ class LlmSummarizationService(private val context: Context) {
                     .build()
                 llm = LlmInference.createFromOptions(context, options)
                 isInitialized = true
+                loadedModelPath = path
                 Log.i(TAG, "LLM initialized from: $path")
                 return
             } catch (e: Exception) {
@@ -135,30 +119,15 @@ class LlmSummarizationService(private val context: Context) {
         Log.w(TAG, "All model candidates failed: $errors")
     }
 
-    /** Returns every existing model file across all search dirs, in priority order. */
+    /** Returns every existing model file across all search dirs, preferred path first. */
     private fun findAllModelPaths(): List<String> {
-        val searchDirs = buildList {
-            add(context.filesDir)
-            context.getExternalFilesDir("models")?.let { add(it) }
-            addAll(SEARCH_DIRS.map { File(it) })
-        }
         val preferred = preferredModelPath?.let { p ->
             if (File(p).exists()) listOf(p) else emptyList()
         } ?: emptyList()
-        val rest = MODEL_FILENAMES.flatMap { name ->
-            searchDirs.mapNotNull { dir ->
-                val f = File(dir, name)
-                if (f.exists() && f.absolutePath !in preferred) {
-                    Log.i(TAG, "Found model candidate: ${f.absolutePath}")
-                    f.absolutePath
-                } else null
-            }
-        }
-        // If preferred not in the hardcoded list, also include any discovered models
         val discovered = discoverModels(context)
             .map { it.path }
-            .filter { it !in preferred && it !in rest }
-        return preferred + rest + discovered
+            .filter { it !in preferred }
+        return preferred + discovered
     }
 
     private fun findModelPath(): String? = findAllModelPaths().firstOrNull()
@@ -305,6 +274,9 @@ class LlmSummarizationService(private val context: Context) {
     /** Returns true if the model loaded successfully. */
     fun isLlmLoaded(): Boolean = isInitialized && llm != null
 
+    /** Returns the filename of the currently loaded model, or null if none loaded. */
+    fun getLoadedModelName(): String? = loadedModelPath?.let { File(it).name }
+
     /**
      * Sends a message to the model with optional article context and image URI.
      * Article context feeds the user's saved reading list to the model.
@@ -386,5 +358,6 @@ identify themes, or answer any other question. Be concise and direct.
         initFailReason = ""
         lastCandidatePaths = emptyList()
         preferredModelPath = null
+        loadedModelPath = null
     }
 }

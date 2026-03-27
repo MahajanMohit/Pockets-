@@ -44,6 +44,9 @@ interface LinkDao {
     @Query("UPDATE link_items SET summary = :summary WHERE id = :id")
     suspend fun updateSummary(id: String, summary: String)
 
+    @Query("UPDATE link_items SET title = :title, description = :description, domain = :domain, faviconUrl = :faviconUrl WHERE id = :id")
+    suspend fun updateLinkMetadata(id: String, title: String, description: String, domain: String, faviconUrl: String)
+
     @Query("DELETE FROM link_items WHERE id = :id")
     suspend fun deleteLink(id: String)
 

@@ -160,12 +160,13 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
             val summary = llm.summarize(scraped.bodyText)
             if (summary.isNotBlank()) {
                 repo.updateSummary(link.id, summary)
-                val rating = llm.rateArticle(scraped.title.ifBlank { link.title }, summary)
-                if (rating != null) {
-                    val current = repo.getTagsForLink(link.id)
-                    val filtered = current.filter { !it.startsWith("ai:") }
-                    repo.updateTags(link.id, filtered + "ai:$rating")
-                }
+                val current = repo.getTagsForLink(link.id)
+                val filtered = current.filter { !it.startsWith("ai:") && !it.startsWith("llm:") }
+                val rating = if (llm.isLlmLoaded()) llm.rateArticle(scraped.title.ifBlank { link.title }, summary) else null
+                val modelName = llm.getLoadedModelName()
+                val newTags = filtered +
+                    listOfNotNull(rating?.let { "ai:$it" }, modelName?.let { "llm:$it" })
+                repo.updateTags(link.id, newTags)
             }
             llm.close()
         } catch (e: Exception) {

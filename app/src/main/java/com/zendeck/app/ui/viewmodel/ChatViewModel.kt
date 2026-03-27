@@ -4,14 +4,17 @@ import android.app.Application
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.service.LlmSummarizationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -20,6 +23,7 @@ data class ChatMessage(val text: String, val isUser: Boolean)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = LinkRepository.getInstance(application)
+    private val dataStore = (application as ZenDeckApplication).dataStore
     private var llmService = LlmSummarizationService(application)
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -63,8 +67,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val articleContext: StateFlow<String> = _articleContext.asStateFlow()
 
     init {
-        refreshModels()
-        loadArticleContext()
+        viewModelScope.launch {
+            // Restore persisted model selection, then refresh
+            val savedPath = dataStore.data.first()[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
+            if (savedPath != null) llmService.setPreferredModelPath(savedPath)
+            refreshModels()
+            loadArticleContext()
+        }
     }
 
     fun refreshModels() {
@@ -87,6 +96,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _selectedModel.value = model
         llmService.setPreferredModelPath(model.path)
         refreshModelState()
+        viewModelScope.launch {
+            dataStore.edit { prefs -> prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH] = model.path }
+        }
     }
 
     /** Re-reads model presence from disk — updates automatically after import. */
@@ -115,6 +127,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             Log.i(TAG, "Model imported via Chat → ${dest.absolutePath}")
             _importStatus.value = ImportStatus.Done(fileName)
+            dataStore.edit { prefs -> prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH] = dest.absolutePath }
             refreshModels()
         } catch (e: Exception) {
             Log.e(TAG, "Model import failed: ${e.message}")
