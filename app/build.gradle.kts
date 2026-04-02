@@ -154,6 +154,9 @@ dependencies {
     // Coil (image loading)
     implementation(libs.coil.compose)
 
+    // MLKit Text Recognition (OCR for screenshots)
+    implementation(libs.mlkit.text.recognition)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

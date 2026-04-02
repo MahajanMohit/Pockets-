@@ -68,4 +68,10 @@ interface LinkDao {
 
     @Query("DELETE FROM link_items WHERE isArchived = 1 AND archivedAt > 0 AND (archivedAt + :ttlMs) <= :now")
     suspend fun deleteExpiredArchived(now: Long, ttlMs: Long)
+
+    @Query("UPDATE link_items SET contentType = :type, localImagePath = :path WHERE id = :id")
+    suspend fun updateContentMeta(id: String, type: String, path: String)
+
+    @Query("SELECT localImagePath FROM link_items WHERE isArchived = 1 AND archivedAt > 0 AND (archivedAt + :ttlMs) <= :now AND localImagePath != ''")
+    suspend fun getExpiredArchivedImagePaths(now: Long, ttlMs: Long): List<String>
 }

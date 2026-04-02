@@ -27,7 +27,9 @@ data class LinkItemEntity(
     val isArchived: Boolean,
     val domain: String,
     val faviconUrl: String,
-    val archivedAt: Long = 0L
+    val archivedAt: Long = 0L,
+    val contentType: String = "link",
+    val localImagePath: String = ""
 ) {
     fun toDomain() = LinkItem(
         id = id,
@@ -42,7 +44,9 @@ data class LinkItemEntity(
         isArchived = isArchived,
         domain = domain,
         faviconUrl = faviconUrl,
-        archivedAt = archivedAt
+        archivedAt = archivedAt,
+        contentType = contentType,
+        localImagePath = localImagePath
     )
 
     companion object {
@@ -59,7 +63,9 @@ data class LinkItemEntity(
             isArchived = item.isArchived,
             domain = item.domain,
             faviconUrl = item.faviconUrl,
-            archivedAt = item.archivedAt
+            archivedAt = item.archivedAt,
+            contentType = item.contentType,
+            localImagePath = item.localImagePath
         )
     }
 }

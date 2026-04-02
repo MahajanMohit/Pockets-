@@ -137,11 +137,18 @@ object LinkScraperService {
         }
     }
 
+    // Known X system paths that are not usernames
+    private val X_SYSTEM_PATHS = setOf(
+        "i", "intent", "home", "explore",
+        "notifications", "messages", "search", "settings", "compose"
+    )
+
     /** Extracts tweet author from the URL path; tries og:title via a simple HTTP fetch as well. */
     private fun scrapeXTwitter(url: String, domain: String): ScrapedContent {
         // URL form: https://x.com/username/status/12345 or https://twitter.com/username/...
         val username = try {
-            URI(url).path.split("/").firstOrNull { it.isNotBlank() }
+            URI(url).path.split("/")
+                .firstOrNull { it.isNotBlank() && it.lowercase() !in X_SYSTEM_PATHS }
         } catch (_: Exception) { null }
 
         // Try fetching og:title — X serves it to crawlers (without JS)
@@ -156,7 +163,9 @@ object LinkScraperService {
                 .ifBlank { null }
         } catch (_: Exception) { null }
 
-        val title = ogTitle ?: if (username != null) "Post by @$username" else "X post"
+        val title = ogTitle
+            ?: if (username != null) "Post by @$username"
+            else "Post on X"
         return ScrapedContent(
             title = title,
             description = "",

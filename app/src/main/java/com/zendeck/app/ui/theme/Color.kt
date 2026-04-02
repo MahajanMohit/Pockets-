@@ -9,9 +9,9 @@ val AccentTealDim = Color(0xFF00695C)
 val SlateGray = Color(0xFF607D8B)
 
 // TTL Urgency colors (same in both themes)
-val UrgencyFresh    = Color(0xFF2E7D32)   // dark green  (Material Green 800)
-val UrgencyWarning  = Color(0xFFBF360C)   // dark orange (Material Deep Orange 900)
-val UrgencyCritical = Color(0xFF7B1D1D)   // dark maroon (Red 900 dark)
+val UrgencyFresh    = Color(0xFF1B5E20)   // dark green  (Green 900)
+val UrgencyWarning  = Color(0xFF00695C)   // dark teal   (Teal 700)
+val UrgencyCritical = Color(0xFF4A148C)   // dark purple (Purple 900)
 
 val SwipeGreenBackground = Color(0xFF1B5E20)
 val SwipeRedBackground = Color(0xFFB71C1C)

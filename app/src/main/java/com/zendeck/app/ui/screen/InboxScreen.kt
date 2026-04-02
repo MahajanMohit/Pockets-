@@ -41,7 +41,6 @@ fun InboxScreen(
 ) {
     val links by inboxViewModel.filteredInboxLinks.collectAsStateWithLifecycle()
     val searchQuery by inboxViewModel.inboxSearch.collectAsStateWithLifecycle()
-    val ratings by inboxViewModel.inboxRatings.collectAsStateWithLifecycle()
     val modelAvailable by inboxViewModel.modelAvailable.collectAsStateWithLifecycle()
     val activeLinkCount by inboxViewModel.activeLinkCount.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -198,7 +197,6 @@ fun InboxScreen(
                             LinkCard(
                                 link = link,
                                 isExpanded = isExpanded,
-                                aiRating = ratings[link.id],
                                 onTap = {
                                     expandedLinkId = if (isExpanded) null else link.id
                                 },

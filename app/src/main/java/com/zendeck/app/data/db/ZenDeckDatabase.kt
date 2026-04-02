@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [LinkItemEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,6 +28,13 @@ abstract class ZenDeckDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE link_items ADD COLUMN contentType TEXT NOT NULL DEFAULT 'link'")
+                db.execSQL("ALTER TABLE link_items ADD COLUMN localImagePath TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): ZenDeckDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
@@ -39,7 +46,7 @@ abstract class ZenDeckDatabase : RoomDatabase() {
                 ZenDeckDatabase::class.java,
                 "zendeck.db"
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

@@ -1,6 +1,7 @@
 package com.zendeck.app.service
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -12,19 +13,106 @@ import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 class ShareActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val url = extractUrl(intent?.getStringExtra(Intent.EXTRA_TEXT))
-        if (url == null) {
-            Toast.makeText(this, "No valid URL found", Toast.LENGTH_SHORT).show()
-            finish()
+        when {
+            intent?.type?.startsWith("image/") == true -> handleImageShare()
+            else -> handleTextOrLinkShare()
+        }
+
+        finish()
+    }
+
+    // ── Image share ──────────────────────────────────────────────────────────
+
+    @Suppress("DEPRECATION")
+    private fun handleImageShare() {
+        val uri: Uri? = intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        if (uri == null) {
+            Toast.makeText(this, "No image found", Toast.LENGTH_SHORT).show()
             return
         }
 
+        // Keep URI accessible after Activity finishes (best-effort)
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (_: SecurityException) { /* non-persistable URIs are fine — copied immediately */ }
+
+        val app = application as ZenDeckApplication
+        val repository = LinkRepository.getInstance(applicationContext)
+        val mainHandler = Handler(Looper.getMainLooper())
+
+        // Use a synthetic URL so the duplicate-check in addLink works
+        val syntheticUrl = "image://${uri.toString().hashCode().toUInt()}"
+
+        app.applicationScope.launch {
+            val prefs = app.dataStore.data.first()
+            val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
+
+            val (id, isNew) = repository.addLink(
+                url = syntheticUrl,
+                title = "Screenshot",
+                description = "",
+                domain = "image",
+                faviconUrl = "",
+                ttlHours = ttlHours,
+                contentType = "image"
+            )
+
+            if (!isNew) {
+                mainHandler.post { Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show() }
+                return@launch
+            }
+
+            mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
+
+            // Compress + copy into app storage
+            val outFile = ImageAnalysisService.copyAndCompress(applicationContext, uri)
+            if (outFile != null) {
+                repository.updateContentMeta(id, "image", outFile.absolutePath)
+
+                // OCR → optional LLM summary
+                val ocrText = ImageAnalysisService.extractText(outFile.absolutePath)
+                val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
+                if (ocrText.length >= 80 && aiEnabled) {
+                    val title = ImageAnalysisService.heuristicTitle(ocrText)
+                    repository.updateLinkMetadata(id, title, "", "image", "")
+                    val llmService = LlmSummarizationService(applicationContext)
+                    try {
+                        val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
+                        if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
+                        val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
+                        val summary = llmService.summarize(ocrText, customPrompt = customPrompt)
+                        if (summary.isNotBlank()) repository.updateSummary(id, summary)
+                    } finally {
+                        llmService.close()
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Text / link share ────────────────────────────────────────────────────
+
+    private fun handleTextOrLinkShare() {
+        val sharedText = intent?.getStringExtra(Intent.EXTRA_TEXT)
+        val url = extractUrl(sharedText)
+
+        if (url != null) {
+            handleLinkShare(url)
+        } else if (!sharedText.isNullOrBlank()) {
+            handlePlainTextShare(sharedText)
+        } else {
+            Toast.makeText(this, "No content found", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleLinkShare(url: String) {
         val app = application as ZenDeckApplication
         val repository = LinkRepository.getInstance(applicationContext)
         val mainHandler = Handler(Looper.getMainLooper())
@@ -34,7 +122,6 @@ class ShareActivity : ComponentActivity() {
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
             val domain = extractDomain(url)
 
-            // Insert placeholder immediately so the link appears in the inbox right away
             val (id, isNew) = repository.addLink(
                 url = url,
                 title = domain,
@@ -51,7 +138,6 @@ class ShareActivity : ComponentActivity() {
 
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
 
-            // Background enrichment — Activity has already finished
             val scraped = LinkScraperService.scrape(url)
             repository.updateLinkMetadata(id, scraped.title, scraped.description, scraped.domain, scraped.faviconUrl)
 
@@ -61,13 +147,10 @@ class ShareActivity : ComponentActivity() {
                 try {
                     val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
                     if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
-
                     val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
                     val summary = llmService.summarize(scraped.bodyText, customPrompt = customPrompt)
-
                     if (summary.isNotBlank()) {
                         repository.updateSummary(id, summary)
-
                         if (llmService.isLlmLoaded()) {
                             val modelName = llmService.getLoadedModelName()
                             val rating = llmService.rateArticle(scraped.title, summary)
@@ -82,9 +165,58 @@ class ShareActivity : ComponentActivity() {
                 }
             }
         }
-
-        finish()
     }
+
+    private fun handlePlainTextShare(text: String) {
+        val app = application as ZenDeckApplication
+        val repository = LinkRepository.getInstance(applicationContext)
+        val mainHandler = Handler(Looper.getMainLooper())
+
+        // Stable synthetic URL for duplicate detection
+        val hash = MessageDigest.getInstance("SHA-256")
+            .digest(text.take(200).toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val syntheticUrl = "text://$hash"
+        val title = ImageAnalysisService.heuristicTitle(text)
+
+        app.applicationScope.launch {
+            val prefs = app.dataStore.data.first()
+            val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
+
+            val (id, isNew) = repository.addLink(
+                url = syntheticUrl,
+                title = title,
+                description = "",
+                domain = "note",
+                faviconUrl = "",
+                ttlHours = ttlHours,
+                contentType = "text"
+            )
+
+            if (!isNew) {
+                mainHandler.post { Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show() }
+                return@launch
+            }
+
+            mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
+
+            val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
+            if (text.length >= 80 && aiEnabled) {
+                val llmService = LlmSummarizationService(applicationContext)
+                try {
+                    val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
+                    if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
+                    val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
+                    val summary = llmService.summarize(text, customPrompt = customPrompt)
+                    if (summary.isNotBlank()) repository.updateSummary(id, summary)
+                } finally {
+                    llmService.close()
+                }
+            }
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private fun extractUrl(text: String?): String? {
         if (text == null) return null

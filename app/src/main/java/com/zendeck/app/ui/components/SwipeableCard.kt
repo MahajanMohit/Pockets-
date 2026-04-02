@@ -32,6 +32,7 @@ private val RestoreColor = Color(0xFF10B981)   // teal  — swipe left to restor
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SwipeableCard(
+    modifier: Modifier = Modifier,
     onSwipeToArchive: (() -> Unit)? = null,
     onSwipeToRestore: (() -> Unit)? = null,
     content: @Composable () -> Unit
@@ -56,6 +57,7 @@ fun SwipeableCard(
     }
 
     SwipeToDismissBox(
+        modifier = modifier,
         state = state,
         enableDismissFromStartToEnd = onSwipeToArchive != null,  // right-swipe enabled in Inbox
         enableDismissFromEndToStart = onSwipeToRestore != null,  // left-swipe enabled in Archive

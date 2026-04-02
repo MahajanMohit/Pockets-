@@ -6,6 +6,7 @@ import com.zendeck.app.data.db.ZenDeckDatabase
 import com.zendeck.app.domain.model.LinkItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.io.File
 import java.util.UUID
 
 class LinkRepository private constructor(context: Context) {
@@ -36,7 +37,9 @@ class LinkRepository private constructor(context: Context) {
         description: String,
         domain: String,
         faviconUrl: String,
-        ttlHours: Long = 72L
+        ttlHours: Long = 72L,
+        contentType: String = "link",
+        localImagePath: String = ""
     ): Pair<String, Boolean> {
         // Duplicate check — return existing ID without re-inserting
         dao.findIdByUrl(url)?.let { existingId -> return Pair(existingId, false) }
@@ -56,11 +59,16 @@ class LinkRepository private constructor(context: Context) {
             isArchived = false,
             domain = domain,
             faviconUrl = faviconUrl,
-            archivedAt = 0L
+            archivedAt = 0L,
+            contentType = contentType,
+            localImagePath = localImagePath
         )
         dao.insertLink(entity)
         return Pair(id, true)
     }
+
+    suspend fun updateContentMeta(id: String, type: String, path: String) =
+        dao.updateContentMeta(id, type, path)
 
     suspend fun updateSummary(id: String, summary: String) =
         dao.updateSummary(id, summary)
@@ -77,8 +85,21 @@ class LinkRepository private constructor(context: Context) {
     suspend fun updateTags(id: String, tags: List<String>) =
         dao.updateTags(id, tags)
 
-    suspend fun deleteLink(id: String) =
+    suspend fun deleteLink(id: String) {
+        val entity = dao.getLinkById(id)
+        if (entity != null && entity.localImagePath.isNotBlank()) {
+            File(entity.localImagePath).delete()
+        }
         dao.deleteLink(id)
+    }
+
+    suspend fun deleteLocalFilesForExpiredArchived(ttlHours: Long = 72L) {
+        val now = System.currentTimeMillis()
+        val ttlMs = ttlHours * 3_600_000L
+        dao.getExpiredArchivedImagePaths(now, ttlMs).forEach { path ->
+            if (path.isNotBlank()) File(path).delete()
+        }
+    }
 
     suspend fun archiveExpired() =
         dao.archiveExpiredLinks(System.currentTimeMillis())
