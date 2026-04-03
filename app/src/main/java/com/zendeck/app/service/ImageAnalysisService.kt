@@ -19,21 +19,19 @@ import kotlin.coroutines.resumeWithException
 object ImageAnalysisService {
 
     private const val MAX_CAPTURES_DIR_BYTES = 50L * 1024 * 1024  // 50 MB guard
-    private const val MAX_IMAGE_DIMENSION = 2160  // preserve full detail for typical phone screenshots
-    private const val JPEG_QUALITY = 92           // higher quality reduces text artefacts
 
     /**
-     * Copies the source URI into filesDir/captures/<uuid>.jpg, compressing to max 1024px JPEG.
+     * Copies the source URI into filesDir/captures/<uuid>.png using lossless PNG.
+     * PNG is required for screenshots — JPEG introduces ringing artefacts on text edges.
      * Returns null if the captures directory has exceeded 50 MB.
      */
     suspend fun copyAndCompress(context: Context, sourceUri: Uri): File? = withContext(Dispatchers.IO) {
         val capturesDir = File(context.filesDir, "captures").also { it.mkdirs() }
 
-        // Storage guard: bail if captures dir is too large
         val dirSize = capturesDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
         if (dirSize > MAX_CAPTURES_DIR_BYTES) return@withContext null
 
-        val outFile = File(capturesDir, "${UUID.randomUUID()}.jpg")
+        val outFile = File(capturesDir, "${UUID.randomUUID()}.png")
 
         try {
             val inputStream = context.contentResolver.openInputStream(sourceUri) ?: return@withContext null
@@ -41,22 +39,10 @@ object ImageAnalysisService {
             inputStream.close()
             if (original == null) return@withContext null
 
-            // Scale down if necessary
-            val bitmap = if (original.width > MAX_IMAGE_DIMENSION || original.height > MAX_IMAGE_DIMENSION) {
-                val scale = MAX_IMAGE_DIMENSION.toFloat() / maxOf(original.width, original.height)
-                val w = (original.width * scale).toInt()
-                val h = (original.height * scale).toInt()
-                val scaled = Bitmap.createScaledBitmap(original, w, h, true)
-                original.recycle()
-                scaled
-            } else {
-                original
-            }
-
             FileOutputStream(outFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+                original.compress(Bitmap.CompressFormat.PNG, 0, out)
             }
-            bitmap.recycle()
+            original.recycle()
             outFile
         } catch (e: Exception) {
             outFile.delete()
