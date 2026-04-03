@@ -19,8 +19,8 @@ import kotlin.coroutines.resumeWithException
 object ImageAnalysisService {
 
     private const val MAX_CAPTURES_DIR_BYTES = 50L * 1024 * 1024  // 50 MB guard
-    private const val MAX_IMAGE_DIMENSION = 1024
-    private const val JPEG_QUALITY = 85
+    private const val MAX_IMAGE_DIMENSION = 2160  // preserve full detail for typical phone screenshots
+    private const val JPEG_QUALITY = 92           // higher quality reduces text artefacts
 
     /**
      * Copies the source URI into filesDir/captures/<uuid>.jpg, compressing to max 1024px JPEG.
