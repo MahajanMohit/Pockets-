@@ -19,7 +19,8 @@ data class LinkItem(
     val faviconUrl: String,
     val archivedAt: Long = 0L,
     val contentType: String = "link",
-    val localImagePath: String = ""
+    val localImagePath: String = "",
+    val summaryStatus: String = "done"
 ) {
     /** 0.0 = just added, 1.0 = exactly expired */
     @Transient val urgencyFraction: Float

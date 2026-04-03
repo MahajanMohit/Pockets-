@@ -29,7 +29,9 @@ data class LinkItemEntity(
     val faviconUrl: String,
     val archivedAt: Long = 0L,
     val contentType: String = "link",
-    val localImagePath: String = ""
+    val localImagePath: String = "",
+    // "pending" = OCR/LLM in progress, "done" = generated, "unavailable" = couldn't generate
+    val summaryStatus: String = "done"
 ) {
     fun toDomain() = LinkItem(
         id = id,
@@ -46,7 +48,8 @@ data class LinkItemEntity(
         faviconUrl = faviconUrl,
         archivedAt = archivedAt,
         contentType = contentType,
-        localImagePath = localImagePath
+        localImagePath = localImagePath,
+        summaryStatus = summaryStatus
     )
 
     companion object {
@@ -65,7 +68,8 @@ data class LinkItemEntity(
             faviconUrl = item.faviconUrl,
             archivedAt = item.archivedAt,
             contentType = item.contentType,
-            localImagePath = item.localImagePath
+            localImagePath = item.localImagePath,
+            summaryStatus = item.summaryStatus
         )
     }
 }

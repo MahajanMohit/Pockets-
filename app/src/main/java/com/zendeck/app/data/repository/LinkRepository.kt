@@ -39,7 +39,8 @@ class LinkRepository private constructor(context: Context) {
         faviconUrl: String,
         ttlHours: Long = 72L,
         contentType: String = "link",
-        localImagePath: String = ""
+        localImagePath: String = "",
+        summaryStatus: String = "done"
     ): Pair<String, Boolean> {
         // Duplicate check — return existing ID without re-inserting
         dao.findIdByUrl(url)?.let { existingId -> return Pair(existingId, false) }
@@ -61,7 +62,8 @@ class LinkRepository private constructor(context: Context) {
             faviconUrl = faviconUrl,
             archivedAt = 0L,
             contentType = contentType,
-            localImagePath = localImagePath
+            localImagePath = localImagePath,
+            summaryStatus = summaryStatus
         )
         dao.insertLink(entity)
         return Pair(id, true)
@@ -69,6 +71,9 @@ class LinkRepository private constructor(context: Context) {
 
     suspend fun updateContentMeta(id: String, type: String, path: String) =
         dao.updateContentMeta(id, type, path)
+
+    suspend fun updateSummaryStatus(id: String, status: String) =
+        dao.updateSummaryStatus(id, status)
 
     suspend fun updateSummary(id: String, summary: String) =
         dao.updateSummary(id, summary)

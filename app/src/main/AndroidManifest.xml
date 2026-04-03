@@ -69,6 +69,16 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Widget config activity — shown when user adds the widget to the home screen -->
+        <activity
+            android:name=".widget.ZenDeckWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ZenDeck">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <!-- App Widget Receiver -->
         <receiver
             android:name=".widget.ZenDeckWidgetReceiver"

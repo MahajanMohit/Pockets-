@@ -11,27 +11,49 @@ import androidx.glance.GlanceTheme
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
 import com.zendeck.app.MainActivity
+import com.zendeck.app.data.db.ZenDeckDatabase
 import com.zendeck.app.data.repository.LinkRepository
+import com.zendeck.app.domain.model.LinkItem
+import com.zendeck.app.widget.ZenDeckWidgetConfigActivity
 import kotlinx.coroutines.flow.first
 
 class ZenDeckWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val repo = LinkRepository.getInstance(context)
-        val urgentLink = try {
-            repo.getMostUrgentActive().first()
-        } catch (e: Exception) {
-            null
+
+        // Check for a user-pinned link for this widget instance
+        val appWidgetId = try {
+            GlanceAppWidgetManager(context).getAppWidgetId(id)
+        } catch (_: Exception) { -1 }
+
+        val displayLink: LinkItem? = if (appWidgetId != -1) {
+            val prefs = context.getSharedPreferences(
+                ZenDeckWidgetConfigActivity.PREFS_NAME, Context.MODE_PRIVATE
+            )
+            val pinnedId = prefs.getString(ZenDeckWidgetConfigActivity.pinnedKey(appWidgetId), null)
+            if (pinnedId != null) {
+                try {
+                    ZenDeckDatabase.getInstance(context).linkDao()
+                        .getLinkById(pinnedId)?.toDomain()
+                        ?: repo.getMostUrgentActive().first()  // pinned link deleted — fall back
+                } catch (_: Exception) { repo.getMostUrgentActive().first() }
+            } else {
+                repo.getMostUrgentActive().first()
+            }
+        } else {
+            try { repo.getMostUrgentActive().first() } catch (_: Exception) { null }
         }
 
         provideContent {
-            WidgetContent(urgentLink?.title, urgentLink?.timeUntilExpiry, urgentLink?.domain)
+            WidgetContent(displayLink?.title, displayLink?.timeUntilExpiry, displayLink?.domain)
         }
     }
 

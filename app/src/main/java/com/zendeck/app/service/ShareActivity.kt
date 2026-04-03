@@ -61,7 +61,8 @@ class ShareActivity : ComponentActivity() {
                 domain = "image",
                 faviconUrl = "",
                 ttlHours = ttlHours,
-                contentType = "image"
+                contentType = "image",
+                summaryStatus = "pending"
             )
 
             if (!isNew) {
@@ -73,26 +74,38 @@ class ShareActivity : ComponentActivity() {
 
             // Compress + copy into app storage
             val outFile = ImageAnalysisService.copyAndCompress(applicationContext, uri)
-            if (outFile != null) {
-                repository.updateContentMeta(id, "image", outFile.absolutePath)
+            if (outFile == null) {
+                repository.updateSummaryStatus(id, "unavailable")
+                return@launch
+            }
 
-                // OCR → optional LLM summary
-                val ocrText = ImageAnalysisService.extractText(outFile.absolutePath)
-                val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
-                if (ocrText.length >= 80 && aiEnabled) {
-                    val title = ImageAnalysisService.heuristicTitle(ocrText)
-                    repository.updateLinkMetadata(id, title, "", "image", "")
-                    val llmService = LlmSummarizationService(applicationContext)
-                    try {
-                        val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
-                        if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
-                        val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
-                        val summary = llmService.summarize(ocrText, customPrompt = customPrompt)
-                        if (summary.isNotBlank()) repository.updateSummary(id, summary)
-                    } finally {
-                        llmService.close()
+            repository.updateContentMeta(id, "image", outFile.absolutePath)
+
+            // OCR → optional LLM summary
+            val ocrText = ImageAnalysisService.extractText(outFile.absolutePath)
+            val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
+            if (ocrText.length >= 80 && aiEnabled) {
+                val title = ImageAnalysisService.heuristicTitle(ocrText)
+                repository.updateLinkMetadata(id, title, "", "image", "")
+                val llmService = LlmSummarizationService(applicationContext)
+                try {
+                    val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
+                    if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
+                    val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
+                    val summary = llmService.summarize(ocrText, customPrompt = customPrompt)
+                    if (summary.isNotBlank()) {
+                        repository.updateSummary(id, summary)
+                        repository.updateSummaryStatus(id, "done")
+                    } else {
+                        repository.updateSummaryStatus(id, "unavailable")
                     }
+                } catch (_: Exception) {
+                    repository.updateSummaryStatus(id, "unavailable")
+                } finally {
+                    llmService.close()
                 }
+            } else {
+                repository.updateSummaryStatus(id, "unavailable")
             }
         }
     }
@@ -190,7 +203,8 @@ class ShareActivity : ComponentActivity() {
                 domain = "note",
                 faviconUrl = "",
                 ttlHours = ttlHours,
-                contentType = "text"
+                contentType = "text",
+                summaryStatus = "pending"
             )
 
             if (!isNew) {
@@ -208,10 +222,19 @@ class ShareActivity : ComponentActivity() {
                     if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
                     val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
                     val summary = llmService.summarize(text, customPrompt = customPrompt)
-                    if (summary.isNotBlank()) repository.updateSummary(id, summary)
+                    if (summary.isNotBlank()) {
+                        repository.updateSummary(id, summary)
+                        repository.updateSummaryStatus(id, "done")
+                    } else {
+                        repository.updateSummaryStatus(id, "unavailable")
+                    }
+                } catch (_: Exception) {
+                    repository.updateSummaryStatus(id, "unavailable")
                 } finally {
                     llmService.close()
                 }
+            } else {
+                repository.updateSummaryStatus(id, "unavailable")
             }
         }
     }

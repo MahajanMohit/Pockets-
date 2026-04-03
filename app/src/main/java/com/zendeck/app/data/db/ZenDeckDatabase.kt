@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [LinkItemEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -35,6 +35,13 @@ abstract class ZenDeckDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Default 'done' for all existing rows — they are already fully processed
+                db.execSQL("ALTER TABLE link_items ADD COLUMN summaryStatus TEXT NOT NULL DEFAULT 'done'")
+            }
+        }
+
         fun getInstance(context: Context): ZenDeckDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
@@ -46,7 +53,7 @@ abstract class ZenDeckDatabase : RoomDatabase() {
                 ZenDeckDatabase::class.java,
                 "zendeck.db"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

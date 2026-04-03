@@ -9,6 +9,7 @@
     android:maxResizeWidth="250dp"
     android:maxResizeHeight="110dp"
     android:resizeMode="horizontal|vertical"
+    android:configure="com.zendeck.app.widget.ZenDeckWidgetConfigActivity"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen"
     android:previewLayout="@layout/widget_zendeck" />

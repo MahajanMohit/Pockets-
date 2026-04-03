@@ -2,13 +2,8 @@ package com.zendeck.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -240,34 +235,10 @@ fun LinkCard(
                         )
                     }
 
-                    // ── Processing shimmer (image/text while summary pending) ──
-                    if (link.summary.isBlank() && link.contentType != "link") {
+                    // ── Summary status chip (image/text only) ─────────────────
+                    if (link.contentType != "link") {
                         Spacer(Modifier.height(6.dp))
-                        val shimmerAlpha by rememberInfiniteTransition(label = "shimmer")
-                            .animateFloat(
-                                initialValue = 0.2f,
-                                targetValue = 0.5f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(900, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Reverse
-                                ),
-                                label = "shimmer_alpha"
-                            )
-                        Box(
-                            Modifier
-                                .fillMaxWidth(0.85f)
-                                .height(10.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(c.textDisabled.copy(alpha = shimmerAlpha))
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth(0.6f)
-                                .height(10.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(c.textDisabled.copy(alpha = shimmerAlpha))
-                        )
+                        SummaryStatusChip(link.summaryStatus)
                     }
 
                     // ── Tags (collapsed) ───────────────────────────────────────
@@ -335,8 +306,13 @@ fun LinkCard(
                                     }
                                 }
                                 else -> {
+                                    val fallbackText = when {
+                                        link.contentType != "link" && link.summaryStatus == "pending" -> "Generating summary..."
+                                        link.contentType != "link" && link.summaryStatus == "unavailable" -> "Couldn't generate a summary"
+                                        else -> "No summary available"
+                                    }
                                     Text(
-                                        text = "No summary available",
+                                        text = fallbackText,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = c.textDisabled
                                     )
@@ -400,6 +376,27 @@ private fun TagChip(tag: String) {
             style = MaterialTheme.typography.labelSmall,
             color = AccentTeal,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun SummaryStatusChip(status: String) {
+    val c = LocalZenDeckColors.current
+    val (label, color) = when (status) {
+        "pending"     -> "Generating summary..." to AccentTeal
+        "unavailable" -> "Summary unavailable"   to c.textDisabled
+        else          -> return  // "done" — chip not needed
+    }
+    Surface(
+        shape = RoundedCornerShape(4.dp),
+        color = color.copy(alpha = 0.10f)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
         )
     }
 }
