@@ -125,7 +125,10 @@ dependencies {
     // Jsoup
     implementation(libs.jsoup)
 
-    // MediaPipe LLM Inference
+    // LiteRT-LM — Gemma 4 E2B / E4B inference (.litertlm files)
+    implementation(libs.litertlm.android)
+
+    // MediaPipe LLM Inference — legacy fallback for older Gemma .bin/.task files
     implementation(libs.mediapipe.tasks.genai) {
         // mediapipe pulls in pre-2.0 kotlin-stdlib-jdk8 which clashes with kotlin-stdlib 2.0
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")

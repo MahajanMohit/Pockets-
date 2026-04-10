@@ -3,6 +3,11 @@ package com.zendeck.app.service
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,8 +21,13 @@ class LlmSummarizationService(private val context: Context) {
         val isVision: Boolean = false
     )
 
+    // LiteRT-LM engine (Gemma 4 E2B / E4B — .litertlm files)
+    private var engine: Engine? = null
+    // MediaPipe inference (legacy Gemma 2/3 — .bin / .task files)
     private var llm: LlmInference? = null
+
     private var isInitialized = false
+    private var isLiteRtLmMode = false
     private var initAttempted = false
     private var initFailReason = ""
     private var lastCandidatePaths: List<String> = emptyList()
@@ -36,7 +46,7 @@ class LlmSummarizationService(private val context: Context) {
             "/data/local/tmp",
         )
 
-        /** Scans all known directories and returns every model file found. */
+        /** Scans all known directories and returns every supported model file found. */
         fun discoverModels(context: Context): List<ModelInfo> {
             val dirs = buildList {
                 add(context.filesDir)
@@ -45,7 +55,8 @@ class LlmSummarizationService(private val context: Context) {
             }
             return dirs.flatMap { dir ->
                 dir.listFiles()?.filter { f ->
-                    f.isFile && (f.name.endsWith(".bin") || f.name.endsWith(".task") || f.name.endsWith(".gguf"))
+                    f.isFile && (f.name.endsWith(".bin") || f.name.endsWith(".task") ||
+                                 f.name.endsWith(".gguf") || f.name.endsWith(".litertlm"))
                 }?.map { f ->
                     ModelInfo(
                         name = f.name,
@@ -58,30 +69,30 @@ class LlmSummarizationService(private val context: Context) {
             }.distinctBy { it.path }
         }
 
-        /** Returns true if any supported model file exists on disk. */
         fun hasModel(context: Context): Boolean = getActiveModelName(context) != null
 
-        /**
-         * Returns the filename of the highest-priority model file that currently exists
-         * on disk, or null if none found.
-         */
         fun getActiveModelName(context: Context): String? =
             discoverModels(context).firstOrNull()?.name
+
+        private fun isLiteRtLmFile(path: String) = path.endsWith(".litertlm")
     }
 
-    /**
-     * Sets a specific model path to prefer. Resets the service so the next
-     * inference call loads the preferred model.
-     */
     fun setPreferredModelPath(path: String?) {
         if (path != preferredModelPath) {
             preferredModelPath = path
-            llm?.close()
-            llm = null
-            isInitialized = false
-            initAttempted = false
-            lastCandidatePaths = emptyList()
+            resetBackends()
         }
+    }
+
+    private fun resetBackends() {
+        llm?.close()
+        llm = null
+        engine?.close()
+        engine = null
+        isInitialized = false
+        isLiteRtLmMode = false
+        initAttempted = false
+        lastCandidatePaths = emptyList()
     }
 
     private fun initialize() {
@@ -99,14 +110,24 @@ class LlmSummarizationService(private val context: Context) {
         val errors = mutableListOf<String>()
         for (path in candidates) {
             try {
-                val options = LlmInference.LlmInferenceOptions.builder()
-                    .setModelPath(path)
-                    .setMaxTokens(MAX_TOKENS)
-                    .build()
-                llm = LlmInference.createFromOptions(context, options)
+                if (isLiteRtLmFile(path)) {
+                    // ── LiteRT-LM path (Gemma 4 E2B / E4B) ──────────────────
+                    val eng = Engine(EngineConfig(modelPath = path, backend = Backend.CPU()))
+                    eng.initialize()
+                    engine = eng
+                    isLiteRtLmMode = true
+                } else {
+                    // ── MediaPipe path (legacy Gemma 2 / 3) ──────────────────
+                    val options = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(path)
+                        .setMaxTokens(MAX_TOKENS)
+                        .build()
+                    llm = LlmInference.createFromOptions(context, options)
+                    isLiteRtLmMode = false
+                }
                 isInitialized = true
                 loadedModelPath = path
-                Log.i(TAG, "LLM initialized from: $path")
+                Log.i(TAG, "LLM initialised from: $path (LiteRT-LM=$isLiteRtLmMode)")
                 return
             } catch (e: Exception) {
                 val msg = "${File(path).name}: ${e::class.simpleName}: ${e.message}"
@@ -119,32 +140,52 @@ class LlmSummarizationService(private val context: Context) {
         Log.w(TAG, "All model candidates failed: $errors")
     }
 
-    /** Returns every existing model file across all search dirs, preferred path first. */
     private fun findAllModelPaths(): List<String> {
         val preferred = preferredModelPath?.let { p ->
             if (File(p).exists()) listOf(p) else emptyList()
         } ?: emptyList()
+        // Prefer .litertlm (Gemma 4) over older formats when auto-discovering
         val discovered = discoverModels(context)
+            .sortedByDescending { it.path.endsWith(".litertlm") }
             .map { it.path }
             .filter { it !in preferred }
         return preferred + discovered
     }
 
-    private fun findModelPath(): String? = findAllModelPaths().firstOrNull()
-
     /**
-     * @param text          Extracted article body text
-     * @param memoryContext Short string from ReadingMemoryStore describing user interests
-     * @param customPrompt  Optional user-defined prompt; overrides the built-in one when non-blank
+     * Generates a response using whichever backend is active.
+     * For LiteRT-LM: creates a fresh Conversation per call (stateless for summarisation).
+     * For MediaPipe: calls generateResponse directly.
      */
+    private suspend fun generateResponse(userContent: String, systemInstruction: String = ""): String {
+        if (isLiteRtLmMode) {
+            val eng = engine ?: return ""
+            val convConfig = if (systemInstruction.isNotBlank()) {
+                ConversationConfig(systemInstruction = Contents.of(systemInstruction))
+            } else {
+                ConversationConfig()
+            }
+            return eng.createConversation(convConfig).use { conv ->
+                val sb = StringBuilder()
+                conv.sendMessageAsync(userContent).collect { token -> sb.append(token) }
+                sb.toString().trim()
+            }
+        } else {
+            return llm?.generateResponse(userContent)?.trim() ?: ""
+        }
+    }
+
     suspend fun summarize(text: String, memoryContext: String = "", customPrompt: String = ""): String {
         if (text.isBlank()) return ""
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
-                val inference = llm ?: return@withContext fallbackSummarize(text)
-                val prompt = buildPrompt(text, memoryContext, customPrompt)
-                val result = inference.generateResponse(prompt)
+                if (!isInitialized) return@withContext fallbackSummarize(text)
+
+                val (userContent, systemInstruction) = buildSummarizePrompt(
+                    text, memoryContext, customPrompt
+                )
+                val result = generateResponse(userContent, systemInstruction)
                 val cleaned = cleanSummary(result)
                 if (cleaned.isBlank()) fallbackSummarize(text) else cleaned
             } catch (e: Exception) {
@@ -154,17 +195,25 @@ class LlmSummarizationService(private val context: Context) {
         }
     }
 
-    /**
-     * Rates an article as "must", "worth", or "skip" based on title and summary.
-     * Returns null if no model is loaded or inference fails.
-     */
     suspend fun rateArticle(title: String, summary: String): String? {
         if (title.isBlank() && summary.isBlank()) return null
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
-                val inference = llm ?: return@withContext null
-                val prompt = """
+                if (!isInitialized) return@withContext null
+
+                val userContent = if (isLiteRtLmMode) {
+                    // LiteRT-LM: plain instruction to the model
+                    "Rate this article as exactly one of: must / worth / skip\n" +
+                    "Rules:\n" +
+                    "- \"must\": genuinely new information, timely insight, or practical value\n" +
+                    "- \"worth\": interesting but not urgent\n" +
+                    "- \"skip\": generic, clickbait, low-information, or promotional\n" +
+                    "Output only one word.\n\n" +
+                    "Title: $title\nSummary: ${summary.take(500)}"
+                } else {
+                    // MediaPipe: raw prompt with turn markers
+                    """
                     <start_of_turn>user
                     Based on this article's title and summary, rate it as exactly one of: must / worth / skip
                     Rules:
@@ -177,8 +226,10 @@ class LlmSummarizationService(private val context: Context) {
                     Summary: ${summary.take(500)}
                     <end_of_turn>
                     <start_of_turn>model
-                """.trimIndent()
-                val response = inference.generateResponse(prompt).trim().lowercase()
+                    """.trimIndent()
+                }
+
+                val response = generateResponse(userContent).trim().lowercase()
                 val firstWord = response.split(Regex("\\s+")).firstOrNull() ?: ""
                 when {
                     firstWord.startsWith("must")  -> "must"
@@ -193,9 +244,133 @@ class LlmSummarizationService(private val context: Context) {
         }
     }
 
+    suspend fun chat(
+        message: String,
+        articleContext: String = "",
+        imageUri: Uri? = null
+    ): String {
+        if (message.isBlank()) return ""
+        return withContext(Dispatchers.Default) {
+            try {
+                initialize()
+                if (!isInitialized) return@withContext buildNotFoundMessage()
+
+                val userContent = buildString {
+                    if (imageUri != null) append("[Image attached: ${imageUri.lastPathSegment}]\n")
+                    if (!isLiteRtLmMode && articleContext.isNotBlank()) {
+                        // MediaPipe: embed context in the turn since no system instruction
+                        append(buildChatSystemPrompt(articleContext))
+                        append("\n\n")
+                    }
+                    append(message.trim())
+                }
+
+                val systemInstruction = if (isLiteRtLmMode) buildChatSystemPrompt(articleContext) else ""
+
+                val prompt = if (isLiteRtLmMode) {
+                    userContent
+                } else {
+                    """
+                    <start_of_turn>user
+                    $userContent
+                    <end_of_turn>
+                    <start_of_turn>model
+                    """.trimIndent()
+                }
+
+                generateResponse(prompt, systemInstruction).trim()
+            } catch (e: Exception) {
+                Log.w(TAG, "Chat inference failed: ${e.message}")
+                "Error during inference: ${e.message}"
+            }
+        }
+    }
+
+    // ── Prompt builders ───────────────────────────────────────────────────────
+
     /**
-     * Sentence-extraction fallback when no LLM model is installed.
+     * Returns (userContent, systemInstruction).
+     * For LiteRT-LM the system instruction is separated out; for MediaPipe it's
+     * embedded in the raw turn-marker prompt.
      */
+    private fun buildSummarizePrompt(
+        text: String,
+        memoryContext: String,
+        customPrompt: String
+    ): Pair<String, String> {
+        val truncated = text.take(3000)
+        return if (isLiteRtLmMode) {
+            val contextLine = if (memoryContext.isNotBlank()) "Reader profile: $memoryContext\n\n" else ""
+            val userMsg = if (customPrompt.isNotBlank()) {
+                "${customPrompt.trim()}\n\nArticle:\n$truncated"
+            } else {
+                "${contextLine}Summarise the following article in 5 to 6 sentences as a single " +
+                "coherent paragraph. Use precise vocabulary and complete sentences. Cover the main " +
+                "point, key supporting details, and any important conclusion. Do not use bullet " +
+                "points or headers. Do not begin with 'The article' or 'This article'.\n\nArticle:\n$truncated"
+            }
+            Pair(userMsg, "You are a reading assistant. Be accurate and concise.")
+        } else {
+            // MediaPipe: return the full formatted prompt as userContent, empty system
+            Pair(buildMediaPipePrompt(truncated, memoryContext, customPrompt), "")
+        }
+    }
+
+    private fun buildMediaPipePrompt(truncated: String, memoryContext: String, customPrompt: String): String {
+        if (customPrompt.isNotBlank()) {
+            return """
+                <start_of_turn>user
+                ${customPrompt.trim()}
+
+                Article:
+                $truncated
+                <end_of_turn>
+                <start_of_turn>model
+            """.trimIndent()
+        }
+        val contextLine = if (memoryContext.isNotBlank()) "Reader profile: $memoryContext\n\n" else ""
+        return """
+            <start_of_turn>user
+            ${contextLine}Read the following article carefully and write a clear, fluent summary in 5 to 6 sentences. Use precise vocabulary and complete sentences. Cover the main point, the key supporting details, and any important conclusion or implication. Do not use bullet points, headers, or lists — write it as a single coherent paragraph. Do not begin with "The article" or "This article" — start directly with the substance.
+
+            Article:
+            $truncated
+            <end_of_turn>
+            <start_of_turn>model
+        """.trimIndent()
+    }
+
+    private fun buildChatSystemPrompt(articleContext: String): String {
+        return if (articleContext.isNotBlank()) {
+            "You are the user's personal reading assistant with access to their saved reading list.\n" +
+            "Their current saved articles:\n$articleContext\n\n" +
+            "Answer their questions about these articles, help them prioritise what to read, " +
+            "identify themes, or answer any other question. Be concise and direct."
+        } else {
+            "You are a helpful AI assistant. Be concise and direct in your answers."
+        }
+    }
+
+    private fun buildNotFoundMessage(): String {
+        return if (initFailReason == "load_failed") buildString {
+            append("⚠️ Model file(s) found but failed to load.\n\nErrors:\n")
+            lastLoadErrors.forEach { append("• $it\n") }
+            append("\nCommon causes:\n")
+            append("• Storage permission denied (grant 'All files access' in Android Settings → Apps → AI Link Triage → Permissions)\n")
+            append("• Not enough RAM to load the model\n")
+            append("• Model file corrupted (re-download it)\n")
+            append("• GPU model on unsupported device — use gemma-4-E2B-it.litertlm")
+        } else {
+            "⚠️ No AI model found.\n\nUse Settings → AI Model to import one, or place a model file in:\n" +
+            "/storage/emulated/0/Download/gemma/\n\n" +
+            "Supported filenames:\n• gemma-4-E2B-it.litertlm  (~2.6 GB, recommended)\n" +
+            "• gemma-4-E4B-it.litertlm  (~4.3 GB, best quality)\n" +
+            "• gemma-3-1b-it-cpu-int4.bin  (~0.8 GB, lightweight legacy)"
+        }
+    }
+
+    // ── Fallback (no model) ───────────────────────────────────────────────────
+
     private fun fallbackSummarize(text: String): String {
         val boilerplate = listOf(
             "subscribe", "newsletter", "sign up", "sign in", "log in", "login",
@@ -220,7 +395,6 @@ class LlmSummarizationService(private val context: Context) {
             "javascript", "enable javascript", "browser", "reload", "refresh",
             "noscript"
         )
-
         return text
             .split(Regex("""(?<=[.!?])\s+"""))
             .map { it.trim() }
@@ -237,123 +411,20 @@ class LlmSummarizationService(private val context: Context) {
             .joinToString("\n") { "• $it" }
     }
 
-    private fun buildPrompt(text: String, memoryContext: String, customPrompt: String = ""): String {
-        val truncated = text.take(3000)
+    private fun cleanSummary(raw: String) = raw.trim()
 
-        if (customPrompt.isNotBlank()) {
-            return """
-                <start_of_turn>user
-                ${customPrompt.trim()}
+    // ── Status accessors ──────────────────────────────────────────────────────
 
-                Article:
-                $truncated
-                <end_of_turn>
-                <start_of_turn>model
-            """.trimIndent()
-        }
-
-        val contextLine = if (memoryContext.isNotBlank())
-            "Reader profile: $memoryContext\n\n"
-        else ""
-
-        return """
-            <start_of_turn>user
-            ${contextLine}Read the following article carefully and write a clear, fluent summary in 5 to 6 sentences. Use precise vocabulary and complete sentences. Cover the main point, the key supporting details, and any important conclusion or implication. Do not use bullet points, headers, or lists — write it as a single coherent paragraph. Do not begin with "The article" or "This article" — start directly with the substance.
-
-            Article:
-            $truncated
-            <end_of_turn>
-            <start_of_turn>model
-        """.trimIndent()
-    }
-
-    private fun cleanSummary(raw: String): String {
-        return raw.trim()
-    }
-
-    /** Returns true if the model loaded successfully. */
-    fun isLlmLoaded(): Boolean = isInitialized && llm != null
-
-    /** Returns the filename of the currently loaded model, or null if none loaded. */
+    fun isLlmLoaded(): Boolean = isInitialized && (llm != null || engine != null)
     fun getLoadedModelName(): String? = loadedModelPath?.let { File(it).name }
-
-    /**
-     * Sends a message to the model with optional article context and image URI.
-     * Article context feeds the user's saved reading list to the model.
-     * Image URI is included as a path reference (text-based for CPU-only models).
-     */
-    suspend fun chat(
-        message: String,
-        articleContext: String = "",
-        imageUri: Uri? = null
-    ): String {
-        if (message.isBlank()) return ""
-        return withContext(Dispatchers.Default) {
-            try {
-                initialize()
-                val inference = llm ?: return@withContext when (initFailReason) {
-                    "load_failed" -> buildString {
-                        append("⚠️ Model file(s) found but failed to load.\n\n")
-                        append("Errors:\n")
-                        lastLoadErrors.forEach { append("• $it\n") }
-                        append("\nCommon causes:\n")
-                        append("• Storage permission denied (grant 'All files access' in Android Settings > Apps > AI Link Triage > Permissions)\n")
-                        append("• GPU model on unsupported device — use gemma3n-E2B-it-int4.task\n")
-                        append("• Not enough RAM to load the model\n")
-                        append("• Model file corrupted (re-download it)")
-                    }
-                    else ->
-                        "⚠️ No AI model found.\n\nUse Settings → AI Model to import one, or place a model file in:\n" +
-                        "/storage/emulated/0/Download/gemma/\n\n" +
-                        "Supported filenames:\n• gemma3n-E2B-it-int4.task  (~1.5 GB, recommended)\n" +
-                        "• gemma3n-E4B-it-int4.task  (~2.5 GB, best quality)\n" +
-                        "• gemma-3-1b-it-cpu-int4.bin  (~0.8 GB, lightweight)"
-                }
-
-                val systemPreamble = buildChatSystemPrompt(articleContext)
-                val userContent = buildString {
-                    if (imageUri != null) {
-                        append("[Image attached: ${imageUri.lastPathSegment}]\n")
-                    }
-                    append(message.trim())
-                }
-
-                val prompt = """
-                    <start_of_turn>user
-                    $systemPreamble
-
-                    $userContent
-                    <end_of_turn>
-                    <start_of_turn>model
-                """.trimIndent()
-
-                inference.generateResponse(prompt).trim()
-            } catch (e: Exception) {
-                Log.w(TAG, "Chat inference failed: ${e.message}")
-                "Error during inference: ${e.message}"
-            }
-        }
-    }
-
-    private fun buildChatSystemPrompt(articleContext: String): String {
-        return if (articleContext.isNotBlank()) {
-            """
-You are the user's personal reading assistant with access to their saved reading list.
-Their current saved articles:
-$articleContext
-
-Answer their questions about these articles, help them prioritise what to read,
-identify themes, or answer any other question. Be concise and direct.
-            """.trimIndent()
-        } else {
-            "You are a helpful AI assistant. Be concise and direct in your answers."
-        }
-    }
 
     fun close() {
         llm?.close()
         llm = null
+        engine?.close()
+        engine = null
         isInitialized = false
+        isLiteRtLmMode = false
         initAttempted = false
         initFailReason = ""
         lastCandidatePaths = emptyList()

@@ -11,18 +11,22 @@ import kotlinx.coroutines.delay
 import java.io.File
 
 /**
- * Enqueues an Android DownloadManager download for the Gemma 3n E2B model and polls
+ * Enqueues an Android DownloadManager download for the Gemma 4 E2B model and polls
  * until it completes or fails. WorkManager keeps this alive across process death.
  *
  * The model lands in [Context.getExternalFilesDir]("models") which
- * [LlmSummarizationService.findModelPath] already searches.
+ * [LlmSummarizationService.discoverModels] already searches.
  *
- * Supported models:
- *   Gemma 3n E2B (~1.5 GB): gemma3n-E2B-it-int4.task  — default, recommended for most devices
- *   Gemma 3n E4B (~2.5 GB): gemma3n-E4B-it-int4.task  — higher quality, needs ~6 GB RAM
+ * Supported models (LiteRT-LM .litertlm format):
+ *   Gemma 4 E2B (~2.6 GB): gemma-4-E2B-it.litertlm  — default, recommended for most devices
+ *   Gemma 4 E4B (~4.3 GB): gemma-4-E4B-it.litertlm  — higher quality, needs ~8 GB RAM
+ *
+ * HuggingFace repos:
+ *   E2B: https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm
+ *   E4B: https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm
  *
  * NOTE: HuggingFace requires accepting the Gemma Terms of Use before direct download works.
- * Kaggle: https://www.kaggle.com/models/google/gemma-3n/frameworks/litert
+ * Replace MODEL_URL with the authenticated download link from HuggingFace or Kaggle.
  */
 class ModelDownloadWorker(
     private val appContext: Context,
@@ -45,7 +49,7 @@ class ModelDownloadWorker(
         val dm = appContext.getSystemService(DownloadManager::class.java)
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("AI Link Triage – AI Model")
-            .setDescription("Downloading Gemma 3n E2B model for AI summaries (≈1.5 GB)…")
+            .setDescription("Downloading Gemma 4 E2B model for AI summaries (≈2.6 GB)…")
             .setNotificationVisibility(
                 DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
             )
@@ -107,18 +111,13 @@ class ModelDownloadWorker(
         const val KEY_ERROR = "error"
 
         /**
-         * Gemma 3n E2B on-device model in LiteRT (.task) format (~1.5 GB).
-         * Download requires accepting the Gemma Terms of Use on Kaggle:
-         *   https://www.kaggle.com/models/google/gemma-3n/frameworks/litert
-         * Replace MODEL_URL with the authenticated direct-download link from Kaggle
-         * or HuggingFace (https://huggingface.co/google/gemma-3n-E2B-it-litert-preview).
-         *
-         * E4B variant (best quality, ~2.5 GB):
-         *   filename: gemma3n-E4B-it-int4.task
-         *   HuggingFace: https://huggingface.co/google/gemma-3n-E4B-it-litert-preview
+         * Gemma 4 E2B in LiteRT-LM format (~2.6 GB).
+         * Requires accepting Gemma Terms of Use at:
+         *   https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm
+         * Replace MODEL_URL with the authenticated download link after accepting the license.
          */
-        const val MODEL_URL = "https://huggingface.co/google/gemma-3n-E2B-it-litert-preview/resolve/main/gemma3n-E2B-it-int4.task"
-        const val MODEL_FILENAME = "gemma3n-E2B-it-int4.task"
+        const val MODEL_URL = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+        const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
 
         /** Anything smaller than this is a corrupt/incomplete download. */
         const val MIN_VALID_SIZE_BYTES = 100 * 1024 * 1024L // 100 MB sanity floor
