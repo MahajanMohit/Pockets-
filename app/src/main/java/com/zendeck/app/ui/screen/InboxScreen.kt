@@ -151,7 +151,7 @@ fun InboxScreen(
                         color = AccentTeal
                     )
                     Text(
-                        "Download Gemma model (~1.1 GB) · WiFi only",
+                        "Download Gemma 3n E2B model (~1.5 GB) · WiFi only",
                         style = MaterialTheme.typography.labelSmall,
                         color = AccentTeal.copy(alpha = 0.7f)
                     )
@@ -264,7 +264,7 @@ fun InboxScreen(
             title = { Text("Download AI Model") },
             text = {
                 Text(
-                    "This will download the Gemma 2B model (~1.1 GB) over WiFi " +
+                    "This will download the Gemma 3n E2B model (~1.5 GB) over WiFi " +
                     "to enable on-device AI summaries.\n\n" +
                     "The download runs in the background and a notification will " +
                     "appear when it's complete.\n\n" +

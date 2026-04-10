@@ -298,16 +298,16 @@ class LlmSummarizationService(private val context: Context) {
                         lastLoadErrors.forEach { append("• $it\n") }
                         append("\nCommon causes:\n")
                         append("• Storage permission denied (grant 'All files access' in Android Settings > Apps > AI Link Triage > Permissions)\n")
-                        append("• GPU model on unsupported device — use gemma-2b-it-cpu-int4.bin\n")
+                        append("• GPU model on unsupported device — use gemma3n-E2B-it-int4.task\n")
                         append("• Not enough RAM to load the model\n")
                         append("• Model file corrupted (re-download it)")
                     }
                     else ->
                         "⚠️ No AI model found.\n\nUse Settings → AI Model to import one, or place a model file in:\n" +
                         "/storage/emulated/0/Download/gemma/\n\n" +
-                        "Supported filenames:\n• gemma-2b-it-cpu-int4.bin  (~1.35 GB)\n" +
-                        "• gemma-3-1b-it-cpu-int4.bin  (~0.8 GB)\n" +
-                        "• gemma-3-4b-it-cpu-int4.bin  (~2.5 GB)"
+                        "Supported filenames:\n• gemma3n-E2B-it-int4.task  (~1.5 GB, recommended)\n" +
+                        "• gemma3n-E4B-it-int4.task  (~2.5 GB, best quality)\n" +
+                        "• gemma-3-1b-it-cpu-int4.bin  (~0.8 GB, lightweight)"
                 }
 
                 val systemPreamble = buildChatSystemPrompt(articleContext)
