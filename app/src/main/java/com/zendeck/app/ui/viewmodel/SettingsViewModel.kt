@@ -42,6 +42,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val KEY_CUSTOM_PROMPT        = stringPreferencesKey("custom_summary_prompt")
         val KEY_SELECTED_MODEL_PATH  = stringPreferencesKey("selected_model_path")
         val KEY_FONT_SCALE           = floatPreferencesKey("font_scale")
+        val KEY_PREFER_GPU           = booleanPreferencesKey("prefer_gpu")
         val TTL_OPTIONS              = listOf(24L, 48L, 72L, 168L)
         private const val TAG = "SettingsViewModel"
     }
@@ -84,6 +85,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setFontScale(scale: Float) = viewModelScope.launch {
         dataStore.edit { prefs -> prefs[KEY_FONT_SCALE] = scale }
+    }
+
+    /** Whether to attempt GPU acceleration for on-device inference (default on). */
+    val preferGpu: StateFlow<Boolean> = dataStore.data
+        .map { prefs -> prefs[KEY_PREFER_GPU] ?: true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun setPreferGpu(enabled: Boolean) = viewModelScope.launch {
+        dataStore.edit { prefs -> prefs[KEY_PREFER_GPU] = enabled }
     }
 
     // ── AI Settings ───────────────────────────────────────────────────────────

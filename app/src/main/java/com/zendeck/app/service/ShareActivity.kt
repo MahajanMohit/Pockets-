@@ -92,6 +92,8 @@ class ShareActivity : ComponentActivity() {
                 try {
                     val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
                     if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
+                    val preferGpu = prefs[SettingsViewModel.KEY_PREFER_GPU] ?: true
+                    llmService.setPreferGpu(preferGpu)
                     val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
                     val summary = llmService.summarize(ocrText, customPrompt = customPrompt)
                     if (summary.isNotBlank()) {
@@ -162,6 +164,8 @@ class ShareActivity : ComponentActivity() {
                 try {
                     val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
                     if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
+                    val preferGpu = prefs[SettingsViewModel.KEY_PREFER_GPU] ?: true
+                    llmService.setPreferGpu(preferGpu)
                     val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
                     val summary = llmService.summarize(scraped.bodyText, customPrompt = customPrompt)
                     if (summary.isNotBlank()) {
@@ -225,6 +229,8 @@ class ShareActivity : ComponentActivity() {
                 try {
                     val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
                     if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
+                    val preferGpu = prefs[SettingsViewModel.KEY_PREFER_GPU] ?: true
+                    llmService.setPreferGpu(preferGpu)
                     val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
                     val summary = llmService.summarize(text, customPrompt = customPrompt)
                     if (summary.isNotBlank()) {

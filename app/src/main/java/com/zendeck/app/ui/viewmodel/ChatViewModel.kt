@@ -70,6 +70,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _articleContext = MutableStateFlow("")
     val articleContext: StateFlow<String> = _articleContext.asStateFlow()
 
+    // ── Active backend (GPU / CPU) ─────────────────────────────────────────────
+
+    private val _activeBackend = MutableStateFlow("CPU")
+    val activeBackend: StateFlow<String> = _activeBackend.asStateFlow()
+
     // ── User memory file ──────────────────────────────────────────────────────
 
     private val _userMemory = MutableStateFlow("")
@@ -77,9 +82,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
+            val prefs = dataStore.data.first()
             // Restore persisted model selection
-            val savedPath = dataStore.data.first()[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
+            val savedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
             if (savedPath != null) llmService.setPreferredModelPath(savedPath)
+            // Restore GPU preference
+            val preferGpu = prefs[SettingsViewModel.KEY_PREFER_GPU] ?: true
+            llmService.setPreferGpu(preferGpu)
             refreshModels()
             loadArticleContext()
             loadMemory()
@@ -158,6 +167,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val name = LlmSummarizationService.getActiveModelName(getApplication())
         _activeModelName.value = _selectedModel.value?.name ?: name
         _modelAvailable.value = _selectedModel.value != null || name != null
+        _activeBackend.value = llmService.getActiveBackend()
     }
 
     fun importModel(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {

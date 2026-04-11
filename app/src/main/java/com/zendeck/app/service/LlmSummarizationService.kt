@@ -28,6 +28,8 @@ class LlmSummarizationService(private val context: Context) {
 
     private var isInitialized = false
     private var isLiteRtLmMode = false
+    private var isGpuActive = false
+    private var preferGpu = true
     private var initAttempted = false
     private var initFailReason = ""
     private var lastCandidatePaths: List<String> = emptyList()
@@ -90,6 +92,15 @@ class LlmSummarizationService(private val context: Context) {
         }
     }
 
+    fun setPreferGpu(prefer: Boolean) {
+        if (prefer != preferGpu) {
+            preferGpu = prefer
+            resetBackends()
+        }
+    }
+
+    fun getActiveBackend(): String = if (isGpuActive) "GPU" else "CPU"
+
     private fun resetBackends() {
         llm?.close()
         llm = null
@@ -97,6 +108,7 @@ class LlmSummarizationService(private val context: Context) {
         engine = null
         isInitialized = false
         isLiteRtLmMode = false
+        isGpuActive = false
         initAttempted = false
         lastCandidatePaths = emptyList()
         resetChatSession("")
@@ -127,22 +139,55 @@ class LlmSummarizationService(private val context: Context) {
             try {
                 if (isLiteRtLmFile(path)) {
                     // ── LiteRT-LM path (Gemma 4 E2B / E4B) ──────────────────
-                    val eng = Engine(EngineConfig(modelPath = path, backend = Backend.CPU()))
+                    // Try GPU first; fall back to CPU if device doesn't support it.
+                    var backend: Backend = Backend.CPU()
+                    if (preferGpu) {
+                        try {
+                            backend = Backend.GPU()
+                            isGpuActive = true
+                        } catch (e: Exception) {
+                            Log.w(TAG, "LiteRT-LM GPU unavailable, falling back to CPU: ${e.message}")
+                            isGpuActive = false
+                        }
+                    } else {
+                        isGpuActive = false
+                    }
+                    val eng = Engine(EngineConfig(modelPath = path, backend = backend))
                     eng.initialize()
                     engine = eng
                     isLiteRtLmMode = true
                 } else {
                     // ── MediaPipe path (legacy Gemma 2 / 3) ──────────────────
-                    val options = LlmInference.LlmInferenceOptions.builder()
-                        .setModelPath(path)
-                        .setMaxTokens(MAX_TOKENS)
-                        .build()
-                    llm = LlmInference.createFromOptions(context, options)
+                    // Try GPU first; fall back to CPU if it fails.
+                    var usedGpu = false
+                    if (preferGpu) {
+                        try {
+                            val gpuOptions = LlmInference.LlmInferenceOptions.builder()
+                                .setModelPath(path)
+                                .setMaxTokens(MAX_TOKENS)
+                                .setPreferredBackend(LlmInference.Backend.GPU)
+                                .build()
+                            llm = LlmInference.createFromOptions(context, gpuOptions)
+                            usedGpu = true
+                        } catch (e: Exception) {
+                            Log.w(TAG, "MediaPipe GPU init failed, falling back to CPU: ${e.message}")
+                            llm?.close()
+                            llm = null
+                        }
+                    }
+                    if (llm == null) {
+                        val cpuOptions = LlmInference.LlmInferenceOptions.builder()
+                            .setModelPath(path)
+                            .setMaxTokens(MAX_TOKENS)
+                            .build()
+                        llm = LlmInference.createFromOptions(context, cpuOptions)
+                    }
+                    isGpuActive = usedGpu
                     isLiteRtLmMode = false
                 }
                 isInitialized = true
                 loadedModelPath = path
-                Log.i(TAG, "LLM initialised from: $path (LiteRT-LM=$isLiteRtLmMode)")
+                Log.i(TAG, "LLM initialised from: $path (LiteRT-LM=$isLiteRtLmMode, GPU=$isGpuActive)")
                 return
             } catch (e: Exception) {
                 val msg = "${File(path).name}: ${e::class.simpleName}: ${e.message}"

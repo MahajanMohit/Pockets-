@@ -45,6 +45,7 @@ fun ChatScreen(
     val isLoading by chatViewModel.isLoading.collectAsStateWithLifecycle()
     val modelAvailable by chatViewModel.modelAvailable.collectAsStateWithLifecycle()
     val activeModelName by chatViewModel.activeModelName.collectAsStateWithLifecycle()
+    val activeBackend by chatViewModel.activeBackend.collectAsStateWithLifecycle()
     val discoveredModels by chatViewModel.discoveredModels.collectAsStateWithLifecycle()
     val selectedModel by chatViewModel.selectedModel.collectAsStateWithLifecycle()
     val selectedImageUri by chatViewModel.selectedImageUri.collectAsStateWithLifecycle()
@@ -125,7 +126,7 @@ fun ChatScreen(
                         text = when {
                             importStatus is ChatViewModel.ImportStatus.Copying ->
                                 "Importing ${(importStatus as ChatViewModel.ImportStatus.Copying).fileName}…"
-                            activeModelName != null -> "$activeModelName · on-device"
+                            activeModelName != null -> "$activeModelName · $activeBackend · on-device"
                             else -> "Import a model to start chatting"
                         },
                         color = if (modelAvailable) AccentTeal else c.textSecondary,

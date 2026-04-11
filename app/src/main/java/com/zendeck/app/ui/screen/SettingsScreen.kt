@@ -40,6 +40,7 @@ fun SettingsScreen(
     val aiEnabled       by viewModel.aiSummariesEnabled.collectAsStateWithLifecycle()
     val customPrompt    by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
     val importStatus    by viewModel.importStatus.collectAsStateWithLifecycle()
+    val preferGpu       by viewModel.preferGpu.collectAsStateWithLifecycle()
     val c               = LocalZenDeckColors.current
     val clipboard       = LocalClipboardManager.current
 
@@ -187,6 +188,21 @@ fun SettingsScreen(
             Text(modelLabel, style = MaterialTheme.typography.bodySmall,
                 color = if (activeModelName != null) AccentTeal else c.textSecondary)
         }
+
+        Spacer(Modifier.height(12.dp))
+
+        ToggleRow(
+            label = "GPU acceleration",
+            checked = preferGpu,
+            icon = Icons.Default.Speed,
+            onToggle = { viewModel.setPreferGpu(it) },
+            c = c
+        )
+        Text(
+            "Uses the Adreno/Mali GPU for faster inference. Falls back to CPU automatically if the GPU doesn't support the model.",
+            style = MaterialTheme.typography.bodySmall, color = c.textSecondary,
+            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+        )
 
         Spacer(Modifier.height(12.dp))
 

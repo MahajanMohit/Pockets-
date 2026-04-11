@@ -11,6 +11,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.memory.ReadingMemoryStore
 import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.widget.ZenDeckWidget
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -167,6 +169,11 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
             val scraped = com.zendeck.app.service.LinkScraperService.scrape(link.url)
             if (scraped.bodyText.isBlank()) return@launch
             val llm = LlmSummarizationService(getApplication())
+            val prefs = (getApplication() as ZenDeckApplication).dataStore.data.first()
+            val preferGpu = prefs[SettingsViewModel.KEY_PREFER_GPU] ?: true
+            llm.setPreferGpu(preferGpu)
+            val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
+            if (selectedPath != null) llm.setPreferredModelPath(selectedPath)
             val summary = llm.summarize(scraped.bodyText)
             if (summary.isNotBlank()) {
                 repo.updateSummary(link.id, summary)
