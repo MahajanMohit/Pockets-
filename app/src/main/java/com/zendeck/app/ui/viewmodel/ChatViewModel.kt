@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.repository.LinkRepository
+import com.zendeck.app.service.ImageAnalysisService
 import com.zendeck.app.service.LlmSummarizationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 data class ChatMessage(val text: String, val isUser: Boolean)
@@ -25,6 +27,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = LinkRepository.getInstance(application)
     private val dataStore = (application as ZenDeckApplication).dataStore
     private var llmService = LlmSummarizationService(application)
+
+    private val memoryFile: File = application.filesDir.resolve("user_memory.txt")
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -66,21 +70,70 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _articleContext = MutableStateFlow("")
     val articleContext: StateFlow<String> = _articleContext.asStateFlow()
 
+    // ── User memory file ──────────────────────────────────────────────────────
+
+    private val _userMemory = MutableStateFlow("")
+    val userMemory: StateFlow<String> = _userMemory.asStateFlow()
+
     init {
         viewModelScope.launch {
-            // Restore persisted model selection, then refresh
+            // Restore persisted model selection
             val savedPath = dataStore.data.first()[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
             if (savedPath != null) llmService.setPreferredModelPath(savedPath)
             refreshModels()
             loadArticleContext()
+            loadMemory()
         }
     }
+
+    // ── Memory ────────────────────────────────────────────────────────────────
+
+    private fun loadMemory() {
+        try {
+            _userMemory.value = if (memoryFile.exists()) memoryFile.readText().trim() else ""
+        } catch (_: Exception) { }
+        rebuildChatSession()
+    }
+
+    /** Overwrites the memory file and restarts the chat session with updated context. */
+    fun updateMemory(content: String) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            memoryFile.writeText(content)
+            _userMemory.value = content
+            rebuildChatSession()
+        } catch (_: Exception) { }
+    }
+
+    private fun rebuildChatSession() {
+        val systemPrompt = buildSystemPrompt(
+            articleContext = _articleContext.value,
+            memory = _userMemory.value
+        )
+        llmService.resetChatSession(systemPrompt)
+    }
+
+    private fun buildSystemPrompt(articleContext: String, memory: String): String {
+        return buildString {
+            append("You are the user's personal reading assistant and AI helper.\n")
+            if (memory.isNotBlank()) {
+                append("\nUser profile / memory:\n$memory\n")
+                append("Use this context to personalise your responses.\n")
+            }
+            if (articleContext.isNotBlank()) {
+                append("\nUser's current saved reading list:\n$articleContext\n")
+                append("\nHelp with their reading list, discuss articles, or assist with any topic.")
+            } else {
+                append("\nBe helpful, concise, and direct.")
+            }
+        }
+    }
+
+    // ── Model management ──────────────────────────────────────────────────────
 
     fun refreshModels() {
         val models = LlmSummarizationService.discoverModels(getApplication())
         _discoveredModels.value = models
 
-        // Keep current selection if still valid, otherwise pick first
         val currentPath = _selectedModel.value?.path
         val stillValid = models.any { it.path == currentPath }
         if (!stillValid) {
@@ -101,7 +154,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Re-reads model presence from disk — updates automatically after import. */
     fun refreshModelState() {
         val name = LlmSummarizationService.getActiveModelName(getApplication())
         _activeModelName.value = _selectedModel.value?.name ?: name
@@ -149,35 +201,71 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         else -> ""
                     }
                 }
+            rebuildChatSession()
         } catch (e: Exception) {
             Log.w(TAG, "loadArticleContext failed: ${e.message}")
         }
     }
 
-    fun setSelectedImage(uri: Uri?) { _selectedImageUri.value = uri }
+    fun setSelectedImage(uri: Uri?) {
+        if (uri != null) {
+            // Take persistable read permission so the URI remains accessible
+            try {
+                getApplication<Application>().contentResolver
+                    .takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (_: SecurityException) { }
+        }
+        _selectedImageUri.value = uri
+    }
+
+    fun clearMessages() {
+        _messages.value = emptyList()
+        rebuildChatSession()
+    }
 
     fun sendMessage(text: String) {
         val trimmed = text.trim()
         if (trimmed.isBlank() || _isLoading.value) return
 
         val imageUri = _selectedImageUri.value
-        _selectedImageUri.value = null  // clear attachment after send
+        _selectedImageUri.value = null
 
-        val displayText = if (imageUri != null)
-            "[Image: ${imageUri.lastPathSegment}]\n$trimmed"
-        else trimmed
-
+        // Show user bubble immediately (indicate if image is attached)
+        val displayText = if (imageUri != null) "📷 [Image]\n$trimmed" else trimmed
         _messages.value = _messages.value + ChatMessage(displayText, isUser = true)
         _isLoading.value = true
 
-        viewModelScope.launch {
-            val reply = llmService.chat(
-                message = trimmed,
-                articleContext = _articleContext.value,
-                imageUri = imageUri
-            )
-            _messages.value = _messages.value + ChatMessage(reply, isUser = false)
-            _isLoading.value = false
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. OCR the attached image if present
+            var imageOcrText = ""
+            if (imageUri != null) {
+                try {
+                    val tempFile = ImageAnalysisService.copyAndCompress(
+                        getApplication(), imageUri
+                    )
+                    if (tempFile != null) {
+                        imageOcrText = ImageAnalysisService.extractText(tempFile.absolutePath)
+                        tempFile.delete() // free temp space
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Image OCR failed: ${e.message}")
+                }
+            }
+
+            // 2. Build the full turn content (OCR text prepended if available)
+            val fullContent = if (imageOcrText.isNotBlank()) {
+                "Image content (extracted via OCR):\n$imageOcrText\n\nUser message: $trimmed"
+            } else {
+                trimmed
+            }
+
+            // 3. Send to the persistent multi-turn session
+            val reply = llmService.chatTurn(fullContent)
+
+            withContext(Dispatchers.Main) {
+                _messages.value = _messages.value + ChatMessage(reply, isUser = false)
+                _isLoading.value = false
+            }
             refreshModelState()
         }
     }

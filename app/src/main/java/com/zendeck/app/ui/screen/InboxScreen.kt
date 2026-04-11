@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -37,7 +38,9 @@ import com.zendeck.app.ui.viewmodel.InboxViewModel
 @Composable
 fun InboxScreen(
     modifier: Modifier = Modifier,
-    inboxViewModel: InboxViewModel = viewModel()
+    inboxViewModel: InboxViewModel = viewModel(),
+    initialExpandLinkId: String? = null,
+    onLinkExpanded: () -> Unit = {}
 ) {
     val links by inboxViewModel.filteredInboxLinks.collectAsStateWithLifecycle()
     val searchQuery by inboxViewModel.inboxSearch.collectAsStateWithLifecycle()
@@ -55,6 +58,17 @@ fun InboxScreen(
     var showDownloadDialog by remember { mutableStateOf(false) }
     // Track IDs being dismissed so we can animate them out before DB removes them
     val dismissedIds = remember { mutableStateListOf<String>() }
+    val listState = rememberLazyListState()
+
+    // Auto-expand and scroll to a link opened from the widget
+    LaunchedEffect(initialExpandLinkId, links) {
+        if (initialExpandLinkId != null && links.isNotEmpty()) {
+            expandedLinkId = initialExpandLinkId
+            val idx = links.indexOfFirst { it.id == initialExpandLinkId }
+            if (idx >= 0) listState.animateScrollToItem(idx)
+            onLinkExpanded()
+        }
+    }
 
     LaunchedEffect(links) {
         if (expandedLinkId != null && links.none { it.id == expandedLinkId }) {
@@ -175,6 +189,7 @@ fun InboxScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)

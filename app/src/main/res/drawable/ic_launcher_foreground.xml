@@ -2,19 +2,7 @@
 <!--
   AI Link Triage icon – pixel matrix "AI" on a dark circuit grid.
   5 × 5 pixel grid, 10 dp pixels with 3 dp gap, centered in 108 dp safe zone.
-  Column X starts: 23, 36, 49, 62, 75   (step = 13)
-  Row    Y starts: 23, 36, 49, 62, 75   (step = 13)
-
-  A pattern (columns 0–2):
-    Row 0: · ■ ·   apex
-    Row 1: ■ · ■   sides
-    Row 2: ■ ■ ■   crossbar
-    Row 3: ■ · ■   sides
-    Row 4: ■ · ■   sides
-
-  Gap (column 3, x=62): all dim
-
-  I pattern (column 4, x=75): all 5 rows lit
+  Colour palette: dark grey background, light grey lit pixels, medium grey accents.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -22,61 +10,61 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Outer ring -->
+    <!-- Outer ring — near-black -->
     <path
         android:pathData="M54,5 A49,49 0 1,0 54,103 A49,49 0 1,0 54,5 Z
                          M54,9 A45,45 0 1,1 54,99 A45,45 0 1,1 54,9 Z"
-        android:fillColor="#0D2B28" />
+        android:fillColor="#1A1A1A" />
 
-    <!-- Corner L-brackets (HUD aesthetic) -->
-    <path android:fillColor="#00897B" android:pathData="M10,10 h7 v2 h-7 z" />
-    <path android:fillColor="#00897B" android:pathData="M10,10 h2 v7 h-2 z" />
-    <path android:fillColor="#00897B" android:pathData="M91,10 h7 v2 h-7 z" />
-    <path android:fillColor="#00897B" android:pathData="M96,10 h2 v7 h-2 z" />
-    <path android:fillColor="#00897B" android:pathData="M10,96 h7 v2 h-7 z" />
-    <path android:fillColor="#00897B" android:pathData="M10,91 h2 v7 h-2 z" />
-    <path android:fillColor="#00897B" android:pathData="M91,96 h7 v2 h-7 z" />
-    <path android:fillColor="#00897B" android:pathData="M96,91 h2 v7 h-2 z" />
+    <!-- Corner L-brackets (HUD aesthetic) — medium grey -->
+    <path android:fillColor="#606060" android:pathData="M10,10 h7 v2 h-7 z" />
+    <path android:fillColor="#606060" android:pathData="M10,10 h2 v7 h-2 z" />
+    <path android:fillColor="#606060" android:pathData="M91,10 h7 v2 h-7 z" />
+    <path android:fillColor="#606060" android:pathData="M96,10 h2 v7 h-2 z" />
+    <path android:fillColor="#606060" android:pathData="M10,96 h7 v2 h-7 z" />
+    <path android:fillColor="#606060" android:pathData="M10,91 h2 v7 h-2 z" />
+    <path android:fillColor="#606060" android:pathData="M91,96 h7 v2 h-7 z" />
+    <path android:fillColor="#606060" android:pathData="M96,91 h2 v7 h-2 z" />
 
-    <!-- Dim matrix pixels (non-lit positions) -->
+    <!-- Dim matrix pixels (non-lit positions) — dark grey -->
     <!-- A: row 0 col 0 and col 2 -->
-    <path android:fillColor="#0D3330" android:pathData="M23,23 h10 v10 h-10 z" />
-    <path android:fillColor="#0D3330" android:pathData="M49,23 h10 v10 h-10 z" />
-    <!-- A: row 1 col 1 (middle of sides) -->
-    <path android:fillColor="#0D3330" android:pathData="M36,36 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M23,23 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M49,23 h10 v10 h-10 z" />
+    <!-- A: row 1 col 1 (middle) -->
+    <path android:fillColor="#2C2C2C" android:pathData="M36,36 h10 v10 h-10 z" />
     <!-- A: row 3 col 1 -->
-    <path android:fillColor="#0D3330" android:pathData="M36,62 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M36,62 h10 v10 h-10 z" />
     <!-- A: row 4 col 1 -->
-    <path android:fillColor="#0D3330" android:pathData="M36,75 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M36,75 h10 v10 h-10 z" />
     <!-- Gap column (x=62, all rows) -->
-    <path android:fillColor="#0D3330" android:pathData="M62,23 h10 v10 h-10 z" />
-    <path android:fillColor="#0D3330" android:pathData="M62,36 h10 v10 h-10 z" />
-    <path android:fillColor="#0D3330" android:pathData="M62,49 h10 v10 h-10 z" />
-    <path android:fillColor="#0D3330" android:pathData="M62,62 h10 v10 h-10 z" />
-    <path android:fillColor="#0D3330" android:pathData="M62,75 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M62,23 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M62,36 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M62,49 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M62,62 h10 v10 h-10 z" />
+    <path android:fillColor="#2C2C2C" android:pathData="M62,75 h10 v10 h-10 z" />
 
-    <!-- Bright teal A pixels -->
-    <!-- Row 0 apex -->
-    <path android:fillColor="#00BFA5" android:pathData="M36,23 h10 v10 h-10 z" />
+    <!-- Lit A pixels — apex and crossbar brightest (#E0E0E0), sides mid (#909090) -->
+    <!-- Row 0 apex (brightest) -->
+    <path android:fillColor="#E0E0E0" android:pathData="M36,23 h10 v10 h-10 z" />
     <!-- Row 1 sides -->
-    <path android:fillColor="#00897B" android:pathData="M23,36 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M49,36 h10 v10 h-10 z" />
-    <!-- Row 2 crossbar (brightest) -->
-    <path android:fillColor="#00897B" android:pathData="M23,49 h10 v10 h-10 z" />
-    <path android:fillColor="#00BFA5" android:pathData="M36,49 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M49,49 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M23,36 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M49,36 h10 v10 h-10 z" />
+    <!-- Row 2 crossbar (bright) -->
+    <path android:fillColor="#909090" android:pathData="M23,49 h10 v10 h-10 z" />
+    <path android:fillColor="#E0E0E0" android:pathData="M36,49 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M49,49 h10 v10 h-10 z" />
     <!-- Row 3 sides -->
-    <path android:fillColor="#00897B" android:pathData="M23,62 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M49,62 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M23,62 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M49,62 h10 v10 h-10 z" />
     <!-- Row 4 sides -->
-    <path android:fillColor="#00897B" android:pathData="M23,75 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M49,75 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M23,75 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M49,75 h10 v10 h-10 z" />
 
-    <!-- Bright teal I pixels (column 4, all rows) -->
-    <path android:fillColor="#00BFA5" android:pathData="M75,23 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M75,36 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M75,49 h10 v10 h-10 z" />
-    <path android:fillColor="#00897B" android:pathData="M75,62 h10 v10 h-10 z" />
-    <path android:fillColor="#00BFA5" android:pathData="M75,75 h10 v10 h-10 z" />
+    <!-- Lit I pixels (column 4, all rows) — top/bottom bright, middle mid -->
+    <path android:fillColor="#E0E0E0" android:pathData="M75,23 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M75,36 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M75,49 h10 v10 h-10 z" />
+    <path android:fillColor="#909090" android:pathData="M75,62 h10 v10 h-10 z" />
+    <path android:fillColor="#E0E0E0" android:pathData="M75,75 h10 v10 h-10 z" />
 
 </vector>

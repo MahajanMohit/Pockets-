@@ -1,10 +1,10 @@
 package com.zendeck.app.service
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Contents
+import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
@@ -34,6 +34,12 @@ class LlmSummarizationService(private val context: Context) {
     private var lastLoadErrors: List<String> = emptyList()
     private var preferredModelPath: String? = null
     private var loadedModelPath: String? = null
+
+    // ── Multi-turn chat session state ─────────────────────────────────────────
+    // LiteRT-LM keeps a Conversation alive across turns; MediaPipe rebuilds from history.
+    private var chatConversation: Conversation? = null
+    private val chatHistory = mutableListOf<Pair<String, String>>() // (user, ai) for MediaPipe
+    private var chatSystemPrompt = ""
 
     companion object {
         private const val TAG = "LlmSummarizationService"
@@ -93,6 +99,15 @@ class LlmSummarizationService(private val context: Context) {
         isLiteRtLmMode = false
         initAttempted = false
         lastCandidatePaths = emptyList()
+        resetChatSession("")
+    }
+
+    /** Starts a fresh multi-turn chat session with the given system prompt. */
+    fun resetChatSession(systemPrompt: String) {
+        chatConversation?.close()
+        chatConversation = null
+        chatHistory.clear()
+        chatSystemPrompt = systemPrompt
     }
 
     private fun initialize() {
@@ -244,44 +259,93 @@ class LlmSummarizationService(private val context: Context) {
         }
     }
 
-    suspend fun chat(
-        message: String,
-        articleContext: String = "",
-        imageUri: Uri? = null
-    ): String {
-        if (message.isBlank()) return ""
+    /**
+     * Sends one turn in an ongoing multi-turn chat session.
+     * Call [resetChatSession] once before the first turn to set the system prompt.
+     * The conversation context is automatically maintained across calls.
+     *
+     * @param userContent  The user's message (may include prepended OCR text from images).
+     */
+    suspend fun chatTurn(userContent: String): String {
+        if (userContent.isBlank()) return ""
         return withContext(Dispatchers.Default) {
             try {
                 initialize()
                 if (!isInitialized) return@withContext buildNotFoundMessage()
 
-                val userContent = buildString {
-                    if (imageUri != null) append("[Image attached: ${imageUri.lastPathSegment}]\n")
-                    if (!isLiteRtLmMode && articleContext.isNotBlank()) {
-                        // MediaPipe: embed context in the turn since no system instruction
-                        append(buildChatSystemPrompt(articleContext))
-                        append("\n\n")
+                if (isLiteRtLmMode) {
+                    val eng = engine ?: return@withContext buildNotFoundMessage()
+                    // Create or reuse the conversation object for this session
+                    if (chatConversation == null) {
+                        val config = ConversationConfig(
+                            systemInstruction = Contents.of(chatSystemPrompt)
+                        )
+                        chatConversation = eng.createConversation(config)
                     }
-                    append(message.trim())
+                    val sb = StringBuilder()
+                    chatConversation!!.sendMessageAsync(userContent).collect { sb.append(it) }
+                    sb.toString().trim()
+                } else {
+                    // MediaPipe: manually reconstruct context from history each turn
+                    val sb = StringBuilder()
+                    if (chatSystemPrompt.isNotBlank()) {
+                        sb.append("<start_of_turn>user\n${chatSystemPrompt}<end_of_turn>\n<start_of_turn>model\nUnderstood. I will act as your reading assistant.<end_of_turn>\n")
+                    }
+                    chatHistory.takeLast(8).forEach { (u, a) ->
+                        sb.append("<start_of_turn>user\n$u<end_of_turn>\n<start_of_turn>model\n$a<end_of_turn>\n")
+                    }
+                    sb.append("<start_of_turn>user\n$userContent<end_of_turn>\n<start_of_turn>model\n")
+                    val response = llm?.generateResponse(sb.toString())?.trim() ?: ""
+                    chatHistory.add(Pair(userContent, response))
+                    response
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Chat inference failed: ${e.message}")
+                "Error during inference: ${e.message}"
+            }
+        }
+    }
 
-                val systemInstruction = if (isLiteRtLmMode) buildChatSystemPrompt(articleContext) else ""
+    /**
+     * Generates 2–4 short descriptive tags for the given content.
+     * Returns an empty list if no model is available.
+     */
+    suspend fun generateTags(title: String, text: String): List<String> {
+        if (title.isBlank() && text.isBlank()) return emptyList()
+        return withContext(Dispatchers.Default) {
+            try {
+                initialize()
+                if (!isInitialized) return@withContext emptyList()
 
-                val prompt = if (isLiteRtLmMode) {
-                    userContent
+                val snippet = text.take(600)
+                val userContent = if (isLiteRtLmMode) {
+                    "Generate 2 to 4 short tags for this content.\n" +
+                    "Rules: each tag is 1–3 words, lowercase, no spaces (use hyphens), no hashtags.\n" +
+                    "Output ONLY the tags, one per line, nothing else.\n\n" +
+                    "Title: $title\nContent: $snippet"
                 } else {
                     """
                     <start_of_turn>user
-                    $userContent
+                    Generate 2 to 4 short tags for this content.
+                    Rules: each tag is 1-3 words, lowercase, no spaces (use hyphens), no hashtags.
+                    Output ONLY the tags, one per line, nothing else.
+
+                    Title: $title
+                    Content: $snippet
                     <end_of_turn>
                     <start_of_turn>model
                     """.trimIndent()
                 }
+                val sysInstruction = if (isLiteRtLmMode) "You are a content tagger. Output only tags." else ""
+                val raw = generateResponse(userContent, sysInstruction)
 
-                generateResponse(prompt, systemInstruction).trim()
+                raw.lines()
+                    .map { it.trim().lowercase().replace(Regex("[^a-z0-9\\-]"), "").take(30) }
+                    .filter { it.isNotBlank() && it.length >= 2 }
+                    .take(4)
             } catch (e: Exception) {
-                Log.w(TAG, "Chat inference failed: ${e.message}")
-                "Error during inference: ${e.message}"
+                Log.w(TAG, "generateTags failed: ${e.message}")
+                emptyList()
             }
         }
     }
@@ -419,6 +483,9 @@ class LlmSummarizationService(private val context: Context) {
     fun getLoadedModelName(): String? = loadedModelPath?.let { File(it).name }
 
     fun close() {
+        chatConversation?.close()
+        chatConversation = null
+        chatHistory.clear()
         llm?.close()
         llm = null
         engine?.close()

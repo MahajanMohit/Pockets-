@@ -35,6 +35,7 @@ fun SettingsScreen(
 ) {
     val ttlHours        by viewModel.ttlHours.collectAsStateWithLifecycle()
     val darkMode        by viewModel.darkMode.collectAsStateWithLifecycle()
+    val fontScale       by viewModel.fontScale.collectAsStateWithLifecycle()
     val lanRunning      by viewModel.lanServerRunning.collectAsStateWithLifecycle()
     val aiEnabled       by viewModel.aiSummariesEnabled.collectAsStateWithLifecycle()
     val customPrompt    by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
@@ -86,6 +87,45 @@ fun SettingsScreen(
             onToggle = { viewModel.setDarkMode(it) },
             c = c
         )
+
+        Spacer(Modifier.height(16.dp))
+
+        // Font size
+        Text("Font size", style = MaterialTheme.typography.labelMedium, color = c.textPrimary)
+        Spacer(Modifier.height(8.dp))
+        val fontOptions = listOf(
+            0.85f to "Small",
+            1.0f  to "Normal",
+            1.15f to "Large",
+            1.3f  to "XL"
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            fontOptions.forEach { (scale, label) ->
+                val isSelected = fontScale == scale
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { viewModel.setFontScale(scale) },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSelected) AccentTeal.copy(alpha = 0.18f) else c.surface,
+                    border = if (isSelected)
+                        androidx.compose.foundation.BorderStroke(1.5.dp, AccentTeal)
+                    else
+                        androidx.compose.foundation.BorderStroke(1.dp, c.cardBorder)
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (isSelected) AccentTeal else c.textSecondary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 10.dp)
+                    )
+                }
+            }
+        }
 
         Divider(c)
 
@@ -308,6 +348,64 @@ fun SettingsScreen(
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
+            }
+        }
+
+        Divider(c)
+
+        // ── AI Memory ───────────────────────────────────────────────────────
+        SectionHeader("AI Memory", c)
+        Text(
+            "The Chat AI remembers facts stored here. Write anything you want it to know about you, " +
+            "your preferences, or your work. This context is included in every chat session.",
+            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
+        )
+        Spacer(Modifier.height(10.dp))
+
+        // Read memory directly from file for the settings view
+        val memCtx = androidx.compose.ui.platform.LocalContext.current
+        var memoryDraft by remember {
+            val f = memCtx.filesDir.resolve("user_memory.txt")
+            mutableStateOf(if (f.exists()) f.readText() else "")
+        }
+
+        OutlinedTextField(
+            value = memoryDraft,
+            onValueChange = { memoryDraft = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = {
+                Text(
+                    "e.g. I'm a software engineer interested in AI, productivity, and startups. " +
+                    "I prefer concise technical summaries.",
+                    style = MaterialTheme.typography.bodySmall, color = c.textDisabled
+                )
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AccentTeal,
+                unfocusedBorderColor = c.textSecondary.copy(alpha = 0.4f),
+                focusedTextColor = c.textPrimary,
+                unfocusedTextColor = c.textPrimary,
+                cursorColor = AccentTeal
+            ),
+            shape = RoundedCornerShape(10.dp),
+            minLines = 4, maxLines = 8
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    try { memCtx.filesDir.resolve("user_memory.txt").writeText(memoryDraft) }
+                    catch (_: Exception) { }
+                },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
+                border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
+            ) { Text("Save memory") }
+            if (memoryDraft.isNotBlank()) {
+                TextButton(onClick = {
+                    memoryDraft = ""
+                    try { memCtx.filesDir.resolve("user_memory.txt").delete() }
+                    catch (_: Exception) { }
+                }) { Text("Clear", color = c.textSecondary) }
             }
         }
 

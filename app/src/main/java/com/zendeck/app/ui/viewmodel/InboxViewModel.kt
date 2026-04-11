@@ -13,6 +13,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.zendeck.app.data.memory.ReadingMemoryStore
 import com.zendeck.app.data.repository.LinkRepository
+import com.zendeck.app.widget.ZenDeckWidget
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.domain.model.ReadingRating
 import com.zendeck.app.service.LlmSummarizationService
@@ -132,7 +133,10 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
 
     // ── Actions ───────────────────────────────────────────────────────────────
 
-    fun archiveLink(id: String) = viewModelScope.launch { repo.archiveLink(id) }
+    fun archiveLink(id: String) = viewModelScope.launch {
+        repo.archiveLink(id)
+        ZenDeckWidget.updateAll(getApplication())
+    }
 
     fun togglePin(id: String, pinned: Boolean) = viewModelScope.launch {
         repo.togglePin(id, pinned)
@@ -148,9 +152,15 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-    fun deleteLink(id: String) = viewModelScope.launch { repo.deleteLink(id) }
+    fun deleteLink(id: String) = viewModelScope.launch {
+        repo.deleteLink(id)
+        ZenDeckWidget.updateAll(getApplication())
+    }
 
-    fun restoreLink(id: String) = viewModelScope.launch { repo.restoreLink(id) }
+    fun restoreLink(id: String) = viewModelScope.launch {
+        repo.restoreLink(id)
+        ZenDeckWidget.updateAll(getApplication())
+    }
 
     fun resummarizeLink(link: LinkItem) = viewModelScope.launch(Dispatchers.IO) {
         try {

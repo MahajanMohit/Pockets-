@@ -383,21 +383,39 @@ private fun TagChip(tag: String) {
 @Composable
 private fun SummaryStatusChip(status: String) {
     val c = LocalZenDeckColors.current
-    val (label, color) = when (status) {
-        "pending"     -> "Generating summary..." to AccentTeal
-        "unavailable" -> "Summary unavailable"   to c.textDisabled
-        else          -> return  // "done" — chip not needed
-    }
-    Surface(
-        shape = RoundedCornerShape(4.dp),
-        color = color.copy(alpha = 0.10f)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-        )
+    when (status) {
+        "pending" -> {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(vertical = 2.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(11.dp),
+                    color = AccentTeal,
+                    strokeWidth = 1.5.dp
+                )
+                Text(
+                    text = "Generating summary…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AccentTeal
+                )
+            }
+        }
+        "unavailable" -> {
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = c.textDisabled.copy(alpha = 0.10f)
+            ) {
+                Text(
+                    text = "Summary unavailable",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = c.textDisabled,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                )
+            }
+        }
+        else -> {} // "done" — nothing shown
     }
 }
 

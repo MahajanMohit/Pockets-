@@ -1,5 +1,6 @@
 package com.zendeck.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,18 +33,44 @@ import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.theme.LocalZenDeckColors
 import com.zendeck.app.ui.theme.ZenDeckTheme
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        /** Extra key used by ZenDeckWidget to request opening a specific link. */
+        const val EXTRA_OPEN_LINK_ID = "open_link_id"
+    }
+
+    // Survives config changes; updated by onNewIntent for FLAG_ACTIVITY_SINGLE_TOP re-delivers
+    private val _pendingLinkId = MutableStateFlow<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Capture link ID from widget tap
+        intent.getStringExtra(EXTRA_OPEN_LINK_ID)?.let { _pendingLinkId.value = it }
+
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
             val darkMode by settingsViewModel.darkMode.collectAsStateWithLifecycle()
-            ZenDeckTheme(useDarkTheme = darkMode) {
-                ZenDeckApp()
+            val fontScale by settingsViewModel.fontScale.collectAsStateWithLifecycle()
+            val pendingLinkId by _pendingLinkId.asStateFlow().collectAsStateWithLifecycle()
+            ZenDeckTheme(useDarkTheme = darkMode, fontScale = fontScale) {
+                ZenDeckApp(
+                    pendingLinkId = pendingLinkId,
+                    onLinkIdConsumed = { _pendingLinkId.value = null }
+                )
             }
         }
+    }
+
+    /** Called when the activity is already running and a new widget tap arrives. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN_LINK_ID)?.let { _pendingLinkId.value = it }
     }
 }
 
@@ -55,10 +82,21 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 }
 
 @Composable
-private fun ZenDeckApp() {
+private fun ZenDeckApp(
+    pendingLinkId: String? = null,
+    onLinkIdConsumed: () -> Unit = {}
+) {
     var selectedTab by remember { mutableStateOf(Tab.Inbox) }
     var previousOrdinal by remember { mutableIntStateOf(0) }
     val c = LocalZenDeckColors.current
+
+    // When a widget tap arrives, switch to the Inbox tab to show the link
+    LaunchedEffect(pendingLinkId) {
+        if (pendingLinkId != null && selectedTab != Tab.Inbox) {
+            previousOrdinal = selectedTab.ordinal
+            selectedTab = Tab.Inbox
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -104,7 +142,11 @@ private fun ZenDeckApp() {
             label = "tab_transition"
         ) { tab ->
             when (tab) {
-                Tab.Inbox -> InboxScreen(modifier = Modifier.padding(innerPadding))
+                Tab.Inbox -> InboxScreen(
+                    modifier = Modifier.padding(innerPadding),
+                    initialExpandLinkId = pendingLinkId,
+                    onLinkExpanded = onLinkIdConsumed
+                )
                 Tab.Archive -> ArchiveScreen(modifier = Modifier.padding(innerPadding))
                 Tab.Chat -> ChatScreen(modifier = Modifier.padding(innerPadding))
                 Tab.Settings -> SettingsScreen(modifier = Modifier.padding(innerPadding))

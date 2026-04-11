@@ -8,6 +8,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.AndroidViewModel
@@ -40,6 +41,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         val KEY_AI_SUMMARIES         = booleanPreferencesKey("ai_summaries_enabled")
         val KEY_CUSTOM_PROMPT        = stringPreferencesKey("custom_summary_prompt")
         val KEY_SELECTED_MODEL_PATH  = stringPreferencesKey("selected_model_path")
+        val KEY_FONT_SCALE           = floatPreferencesKey("font_scale")
         val TTL_OPTIONS              = listOf(24L, 48L, 72L, 168L)
         private const val TAG = "SettingsViewModel"
     }
@@ -73,6 +75,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setDarkMode(enabled: Boolean) = viewModelScope.launch {
         dataStore.edit { prefs -> prefs[KEY_DARK_MODE] = enabled }
+    }
+
+    /** Font scale multiplier. 0.85 = Small, 1.0 = Normal, 1.15 = Large, 1.3 = XL. */
+    val fontScale: StateFlow<Float> = dataStore.data
+        .map { prefs -> prefs[KEY_FONT_SCALE] ?: 1.0f }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1.0f)
+
+    fun setFontScale(scale: Float) = viewModelScope.launch {
+        dataStore.edit { prefs -> prefs[KEY_FONT_SCALE] = scale }
     }
 
     // ── AI Settings ───────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -130,6 +131,16 @@ fun ChatScreen(
                         color = if (modelAvailable) AccentTeal else c.textSecondary,
                         fontSize = 12.sp
                     )
+                }
+                // Clear conversation
+                if (messages.isNotEmpty()) {
+                    IconButton(onClick = { chatViewModel.clearMessages() }) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Clear conversation",
+                            tint = c.textSecondary
+                        )
+                    }
                 }
                 // Import model button
                 IconButton(onClick = {
@@ -283,9 +294,8 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Image attach button (shown for vision models or always)
-                val isVisionModel = selectedModel?.isVision == true
-                if (isVisionModel || modelAvailable) {
+                // Image attach button — always shown when model is available (uses OCR)
+                if (modelAvailable) {
                     IconButton(
                         onClick = { imagePickerLauncher.launch(arrayOf("image/*")) },
                         modifier = Modifier
@@ -295,8 +305,8 @@ fun ChatScreen(
                     ) {
                         Icon(
                             Icons.Default.AttachFile,
-                            contentDescription = "Attach image",
-                            tint = if (isVisionModel) AccentTeal else c.textSecondary,
+                            contentDescription = "Attach image (OCR)",
+                            tint = if (selectedImageUri != null) AccentTeal else c.textSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                     }

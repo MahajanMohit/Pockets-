@@ -6,6 +6,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 private val DarkColorScheme = darkColorScheme(
     primary = AccentTeal,
@@ -48,9 +50,20 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun ZenDeckTheme(useDarkTheme: Boolean = true, content: @Composable () -> Unit) {
+fun ZenDeckTheme(
+    useDarkTheme: Boolean = true,
+    fontScale: Float = 1.0f,
+    content: @Composable () -> Unit
+) {
     val zenDeckColors = if (useDarkTheme) darkZenDeckColors() else lightZenDeckColors()
-    CompositionLocalProvider(LocalZenDeckColors provides zenDeckColors) {
+    val baseDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalZenDeckColors provides zenDeckColors,
+        LocalDensity provides Density(
+            density = baseDensity.density,
+            fontScale = baseDensity.fontScale * fontScale
+        )
+    ) {
         MaterialTheme(
             colorScheme = if (useDarkTheme) DarkColorScheme else LightColorScheme,
             typography = ZenDeckTypography,

@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
+import com.zendeck.app.widget.ZenDeckWidget
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
@@ -150,6 +151,7 @@ class ShareActivity : ComponentActivity() {
             }
 
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
+            ZenDeckWidget.updateAll(applicationContext)
 
             val scraped = LinkScraperService.scrape(url)
             repository.updateLinkMetadata(id, scraped.title, scraped.description, scraped.domain, scraped.faviconUrl)
@@ -167,8 +169,11 @@ class ShareActivity : ComponentActivity() {
                         if (llmService.isLlmLoaded()) {
                             val modelName = llmService.getLoadedModelName()
                             val rating = llmService.rateArticle(scraped.title, summary)
+                            // Auto-generate descriptive tags
+                            val autoTags = llmService.generateTags(scraped.title, summary)
                             val current = repository.getTagsForLink(id)
-                            val newTags = current.filter { !it.startsWith("ai:") && !it.startsWith("llm:") } +
+                            val userTags = current.filter { !it.startsWith("ai:") && !it.startsWith("llm:") }
+                            val newTags = userTags + autoTags +
                                 listOfNotNull(rating?.let { "ai:$it" }, modelName?.let { "llm:$it" })
                             repository.updateTags(id, newTags)
                         }
