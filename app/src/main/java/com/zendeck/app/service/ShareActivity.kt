@@ -8,9 +8,9 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.repository.LinkRepository
-import com.zendeck.app.ui.viewmodel.SettingsViewModel
 import com.zendeck.app.widget.ZenDeckWidget
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -55,43 +55,21 @@ class ShareActivity : ComponentActivity() {
                 contentType = "image", summaryStatus = "pending"
             )
             if (!isNew) {
-                mainHandler.post { Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show() }
+                mainHandler.post {
+                    Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show()
+                }
                 return@launch
             }
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
 
+            // Compress image and update the stored path
             val outFile = ImageAnalysisService.copyAndCompress(applicationContext, uri)
             if (outFile == null) {
                 repository.updateSummaryStatus(id, "unavailable")
                 return@launch
             }
             repository.updateContentMeta(id, "image", outFile.absolutePath)
-
-            val ocrText = ImageAnalysisService.extractText(outFile.absolutePath)
-            val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
-            if (ocrText.length >= 80 && aiEnabled) {
-                val title = ImageAnalysisService.heuristicTitle(ocrText)
-                repository.updateLinkMetadata(id, title, "", "image", "")
-                val llmService = LlmSummarizationService(applicationContext)
-                try {
-                    val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
-                    if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
-                    val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
-                    val summary = llmService.summarize(ocrText, customPrompt = customPrompt)
-                    if (summary.isNotBlank()) {
-                        repository.updateSummary(id, summary)
-                        repository.updateSummaryStatus(id, "done")
-                    } else {
-                        repository.updateSummaryStatus(id, "unavailable")
-                    }
-                } catch (_: Exception) {
-                    repository.updateSummaryStatus(id, "unavailable")
-                } finally {
-                    llmService.close()
-                }
-            } else {
-                repository.updateSummaryStatus(id, "unavailable")
-            }
+            repository.updateSummaryStatus(id, "unavailable")  // images don't have text summary
         }
     }
 
@@ -115,6 +93,8 @@ class ShareActivity : ComponentActivity() {
         app.applicationScope.launch {
             val prefs = app.dataStore.data.first()
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
+            val customPrompt = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
+            val modelPath = prefs[stringPreferencesKey("selected_model_path")]
             val domain = extractDomain(url)
 
             // Save immediately with "pending" so the spinner shows in the card
@@ -123,7 +103,9 @@ class ShareActivity : ComponentActivity() {
                 faviconUrl = "", ttlHours = ttlHours, summaryStatus = "pending"
             )
             if (!isNew) {
-                mainHandler.post { Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show() }
+                mainHandler.post {
+                    Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show()
+                }
                 return@launch
             }
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
@@ -133,35 +115,32 @@ class ShareActivity : ComponentActivity() {
             val scraped = LinkScraperService.scrape(url)
             repository.updateLinkMetadata(id, scraped.title, scraped.description, scraped.domain, scraped.faviconUrl)
 
-            val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
-            if (scraped.bodyText.isNotBlank() && aiEnabled) {
-                val llmService = LlmSummarizationService(applicationContext)
-                try {
-                    val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
-                    if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
-                    val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
-                    val summary = llmService.summarize(scraped.bodyText, customPrompt = customPrompt)
-                    if (summary.isNotBlank()) {
-                        repository.updateSummary(id, summary)
-                        repository.updateSummaryStatus(id, "done")
-                        if (llmService.isLlmLoaded()) {
-                            val autoTags = llmService.generateTags(scraped.title, summary)
-                            val modelName = llmService.getLoadedModelName()
-                            val current = repository.getTagsForLink(id)
-                            val userTags = current.filter { !it.startsWith("llm:") }
-                            val newTags = userTags + autoTags + listOfNotNull(modelName?.let { "llm:$it" })
-                            repository.updateTags(id, newTags)
-                        }
-                    } else {
-                        repository.updateSummaryStatus(id, "unavailable")
-                    }
-                } catch (_: Exception) {
+            if (scraped.bodyText.isNotBlank()) {
+                // Summarize: LLM with SummaryEngine fallback
+                val llm = LlmSummarizationService(applicationContext)
+                modelPath?.let { llm.setPreferredModelPath(it) }
+                val summary = llm.summarize(scraped.bodyText, customPrompt)
+                if (summary.isNotBlank()) {
+                    repository.updateSummary(id, summary)
+                    repository.updateSummaryStatus(id, "done")
+                } else {
                     repository.updateSummaryStatus(id, "unavailable")
-                } finally {
-                    llmService.close()
                 }
+                // Generate AI tags, fall back to title heuristics
+                val aiTags = llm.generateTags(scraped.title, scraped.bodyText)
+                val finalTags = if (aiTags.isNotEmpty()) {
+                    aiTags.map { "llm:$it" }
+                } else {
+                    extractAutoTags(scraped.title)
+                }
+                if (finalTags.isNotEmpty()) {
+                    val current = repository.getTagsForLink(id)
+                    val userTags = current.filter { !it.startsWith("auto:") && !it.startsWith("llm:") }
+                    repository.updateTags(id, userTags + finalTags)
+                }
+                llm.close()
             } else {
-                repository.updateSummaryStatus(id, if (aiEnabled) "unavailable" else "done")
+                repository.updateSummaryStatus(id, "unavailable")
             }
         }
     }
@@ -180,38 +159,36 @@ class ShareActivity : ComponentActivity() {
         app.applicationScope.launch {
             val prefs = app.dataStore.data.first()
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
+            val customPrompt = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
+            val modelPath = prefs[stringPreferencesKey("selected_model_path")]
 
             val (id, isNew) = repository.addLink(
-                url = syntheticUrl, title = title, description = "", domain = "note",
-                faviconUrl = "", ttlHours = ttlHours, contentType = "text", summaryStatus = "pending"
+                url = syntheticUrl, title = title, description = text.take(1000),
+                domain = "note", faviconUrl = "", ttlHours = ttlHours,
+                contentType = "text", summaryStatus = "pending"
             )
             if (!isNew) {
-                mainHandler.post { Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show() }
+                mainHandler.post {
+                    Toast.makeText(applicationContext, "Already saved", Toast.LENGTH_SHORT).show()
+                }
                 return@launch
             }
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
 
-            val aiEnabled = prefs[SettingsViewModel.KEY_AI_SUMMARIES] ?: true
-            if (text.length >= 80 && aiEnabled) {
-                val llmService = LlmSummarizationService(applicationContext)
-                try {
-                    val selectedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
-                    if (selectedPath != null) llmService.setPreferredModelPath(selectedPath)
-                    val customPrompt = prefs[SettingsViewModel.KEY_CUSTOM_PROMPT] ?: ""
-                    val summary = llmService.summarize(text, customPrompt = customPrompt)
-                    if (summary.isNotBlank()) {
-                        repository.updateSummary(id, summary)
-                        repository.updateSummaryStatus(id, "done")
-                    } else {
-                        repository.updateSummaryStatus(id, "unavailable")
-                    }
-                } catch (_: Exception) {
+            if (text.length >= 80) {
+                val llm = LlmSummarizationService(applicationContext)
+                modelPath?.let { llm.setPreferredModelPath(it) }
+                val summary = llm.summarize(text, customPrompt)
+                if (summary.isNotBlank()) {
+                    repository.updateSummary(id, summary)
+                    repository.updateSummaryStatus(id, "done")
+                } else {
                     repository.updateSummaryStatus(id, "unavailable")
-                } finally {
-                    llmService.close()
                 }
+                llm.close()
             } else {
-                repository.updateSummaryStatus(id, "unavailable")
+                // Short text — no summary needed, already stored as description
+                repository.updateSummaryStatus(id, "done")
             }
         }
     }
@@ -227,6 +204,21 @@ class ShareActivity : ComponentActivity() {
     private fun extractDomain(url: String): String {
         return try {
             java.net.URI(url).host?.removePrefix("www.") ?: url
-        } catch (e: Exception) { url }
+        } catch (_: Exception) { url }
     }
+
+    /** Derives 1-3 auto tags from a page title (lowercase, 3+ chars, no stopwords). */
+    private val STOPWORDS = setOf(
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "by", "is", "are", "was", "were", "how", "why", "what",
+        "this", "that", "your", "you", "its", "it", "from", "as", "be"
+    )
+
+    private fun extractAutoTags(title: String): List<String> =
+        title.split(Regex("[^a-zA-Z0-9]+"))
+            .map { it.lowercase().trim() }
+            .filter { it.length >= 4 && it !in STOPWORDS }
+            .distinct()
+            .take(3)
+            .map { "auto:$it" }
 }

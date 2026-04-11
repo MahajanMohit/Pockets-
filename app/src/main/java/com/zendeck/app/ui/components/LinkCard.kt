@@ -34,7 +34,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -242,7 +241,9 @@ fun LinkCard(
                     }
 
                     // ── Tags (collapsed) ───────────────────────────────────────
-                    val visibleTags = link.tags.filter { !it.startsWith("ai:") && !it.startsWith("llm:") }
+                    val visibleTags = link.tags.filter {
+                        !it.startsWith("ai:") && !it.startsWith("llm:") && !it.startsWith("auto:")
+                    }
                     if (!isExpanded && visibleTags.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -292,16 +293,6 @@ fun LinkCard(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = c.slateGrayLight,
                                             modifier = Modifier.padding(bottom = 3.dp)
-                                        )
-                                    }
-                                    val llmAttribution = link.tags.firstOrNull { it.startsWith("llm:") }?.removePrefix("llm:")
-                                    if (llmAttribution != null) {
-                                        Spacer(Modifier.height(4.dp))
-                                        Text(
-                                            text = "Summarised using $llmAttribution",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = c.textDisabled,
-                                            fontStyle = FontStyle.Italic
                                         )
                                     }
                                 }

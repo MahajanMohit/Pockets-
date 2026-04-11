@@ -13,35 +13,28 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * On-device LLM service backed exclusively by LiteRT-LM (Gemma 4 2B .litertlm format).
+ * On-device LLM service using LiteRT-LM (Gemma 4 E2B .litertlm format).
+ * Runs on CPU only — no GPU acceleration to ensure stability across all devices.
  *
- * GPU is tried automatically on every init; if the runtime rejects the GPU backend at any
- * stage the engine is closed and the model is reloaded on CPU.  No user toggle is needed.
+ * Falls back to [SummaryEngine] (pure-Kotlin extractive summarizer) when no
+ * model is installed, so the app remains functional without a model file.
  */
 class LlmSummarizationService(private val context: Context) {
 
-    data class ModelInfo(
-        val name: String,
-        val path: String
-    )
+    data class ModelInfo(val name: String, val path: String)
 
     private var engine: Engine? = null
     private var isInitialized = false
-    private var isGpuActive = false
     private var initAttempted = false
-    private var initFailReason = ""
-    private var lastCandidatePaths: List<String> = emptyList()
-    private var lastLoadErrors: List<String> = emptyList()
     private var preferredModelPath: String? = null
     private var loadedModelPath: String? = null
 
-    // ── Multi-turn chat session ───────────────────────────────────────────────
+    // Persistent conversation for multi-turn chat
     private var chatConversation: Conversation? = null
     private var chatSystemPrompt = ""
 
     companion object {
         private const val TAG = "LlmSummarizationService"
-        private const val MAX_TOKENS = 1024
 
         private val SEARCH_DIRS = listOf(
             "/storage/emulated/0/Download/gemma",
@@ -53,6 +46,7 @@ class LlmSummarizationService(private val context: Context) {
             val dirs = buildList {
                 add(context.filesDir)
                 context.getExternalFilesDir("models")?.let { add(it) }
+                context.filesDir.resolve("models").let { if (it.exists()) add(it) }
                 addAll(SEARCH_DIRS.map { File(it) })
             }
             return dirs.flatMap { dir ->
@@ -76,101 +70,57 @@ class LlmSummarizationService(private val context: Context) {
         }
     }
 
-    /** Returns "GPU" or "CPU" — only meaningful after the first inference call. */
-    fun getActiveBackend(): String = if (isGpuActive) "GPU" else "CPU"
-
-    private fun resetEngine() {
-        engine?.close()
-        engine = null
-        isInitialized = false
-        isGpuActive = false
-        initAttempted = false
-        lastCandidatePaths = emptyList()
-        resetChatSession("")
-    }
-
     fun resetChatSession(systemPrompt: String) {
         chatConversation?.close()
         chatConversation = null
         chatSystemPrompt = systemPrompt
     }
 
-    // ── Initialisation ────────────────────────────────────────────────────────
+    private fun resetEngine() {
+        chatConversation?.close()
+        chatConversation = null
+        engine?.close()
+        engine = null
+        isInitialized = false
+        initAttempted = false
+    }
 
+    /** Tries to load the best available model on CPU. No-op if already loaded. */
     private fun initialize() {
-        if (isInitialized) return
-        val candidates = findModelPaths()
-        if (initAttempted && candidates == lastCandidatePaths) return
+        if (isInitialized || initAttempted) return
         initAttempted = true
-        lastCandidatePaths = candidates
-        initFailReason = ""
+
+        val candidates = buildList {
+            preferredModelPath?.takeIf { File(it).exists() }?.let { add(it) }
+            discoverModels(context).map { it.path }.forEach {
+                if (it != preferredModelPath) add(it)
+            }
+        }
 
         if (candidates.isEmpty()) {
-            initFailReason = "no_file"
+            Log.i(TAG, "No .litertlm model files found")
             return
         }
 
-        val errors = mutableListOf<String>()
         for (path in candidates) {
-            // ── Try GPU first ─────────────────────────────────────────────────
-            val gpuLoaded = tryLoadWithBackend(path, gpu = true)
-            if (gpuLoaded) {
-                isGpuActive = true
-                isInitialized = true
+            var eng: Engine? = null
+            try {
+                eng = Engine(EngineConfig(modelPath = path, backend = Backend.CPU()))
+                eng.initialize()
+                engine = eng
                 loadedModelPath = path
-                Log.i(TAG, "Model loaded on GPU: $path")
-                return
-            }
-            // ── Fall back to CPU ──────────────────────────────────────────────
-            val cpuLoaded = tryLoadWithBackend(path, gpu = false)
-            if (cpuLoaded) {
-                isGpuActive = false
                 isInitialized = true
-                loadedModelPath = path
-                Log.i(TAG, "Model loaded on CPU: $path")
+                Log.i(TAG, "Model loaded on CPU: ${File(path).name}")
                 return
+            } catch (e: Exception) {
+                eng?.runCatching { close() }
+                Log.w(TAG, "CPU load failed (${File(path).name}): ${e.message}")
+            } catch (e: OutOfMemoryError) {
+                eng?.runCatching { close() }
+                Log.e(TAG, "OOM during CPU load: ${e.message}")
             }
-            errors += "${File(path).name}: failed on both GPU and CPU"
         }
-
-        initFailReason = "load_failed"
-        lastLoadErrors = errors
-        Log.w(TAG, "All model candidates failed: $errors")
-    }
-
-    /**
-     * Attempts to create and initialise the Engine with the given backend.
-     * Returns true on success, false on any error (engine is closed on failure).
-     */
-    private fun tryLoadWithBackend(path: String, gpu: Boolean): Boolean {
-        var eng: Engine? = null
-        return try {
-            val backend = if (gpu) Backend.GPU() else Backend.CPU()
-            eng = Engine(EngineConfig(modelPath = path, backend = backend))
-            eng.initialize()
-            engine = eng
-            true
-        } catch (e: Exception) {
-            eng?.close()
-            if (engine === eng) engine = null
-            Log.w(TAG, "${if (gpu) "GPU" else "CPU"} load failed ($path): ${e.message}")
-            false
-        } catch (e: OutOfMemoryError) {
-            eng?.close()
-            if (engine === eng) engine = null
-            Log.e(TAG, "OOM during ${if (gpu) "GPU" else "CPU"} load: ${e.message}")
-            false
-        }
-    }
-
-    private fun findModelPaths(): List<String> {
-        val preferred = preferredModelPath?.let { p ->
-            if (File(p).exists()) listOf(p) else emptyList()
-        } ?: emptyList()
-        val discovered = discoverModels(context)
-            .map { it.path }
-            .filter { it !in preferred }
-        return preferred + discovered
+        Log.w(TAG, "No model could be loaded from ${candidates.size} candidates")
     }
 
     // ── Core generation ───────────────────────────────────────────────────────
@@ -179,44 +129,54 @@ class LlmSummarizationService(private val context: Context) {
         val eng = engine ?: return ""
         val config = if (systemInstruction.isNotBlank()) {
             ConversationConfig(systemInstruction = Contents.of(systemInstruction))
-        } else ConversationConfig()
-
-        return eng.createConversation(config).use { conv ->
-            val sb = StringBuilder()
-            conv.sendMessageAsync(userContent).collect { sb.append(it) }
-            sb.toString().trim()
+        } else {
+            ConversationConfig()
         }
+        val sb = StringBuilder()
+        eng.createConversation(config).use { conv ->
+            conv.sendMessageAsync(userContent).collect { token -> sb.append(token) }
+        }
+        return sb.toString().trim()
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
+    /**
+     * Summarizes [text] into 3-4 bullet points using the on-device model.
+     * Falls back to [SummaryEngine] if no model is available or if inference fails.
+     */
     suspend fun summarize(text: String, customPrompt: String = ""): String {
         if (text.isBlank()) return ""
         return withContext(Dispatchers.IO) {
             try {
                 initialize()
-                if (!isInitialized) return@withContext fallbackSummarize(text)
+                if (!isInitialized) return@withContext SummaryEngine.summarize(text)
 
-                val userMsg = if (customPrompt.isNotBlank()) {
-                    "${customPrompt.trim()}\n\nArticle:\n${text.take(3000)}"
+                val prompt = if (customPrompt.isNotBlank()) {
+                    "${customPrompt.trim()}\n\nArticle:\n${text.take(4000)}"
                 } else {
-                    "Summarise the following article in 5 to 6 sentences as a single coherent " +
-                    "paragraph. Use precise vocabulary and complete sentences. Cover the main " +
-                    "point, key supporting details, and any important conclusion. Do not use " +
-                    "bullet points or headers.\n\nArticle:\n${text.take(3000)}"
+                    "Summarize this article in 3-4 bullet points. Start each with '• '. " +
+                    "Be concise and cover the key ideas.\n\nArticle:\n${text.take(4000)}\n\nSummary:"
                 }
-                val result = generateResponse(userMsg, "You are a reading assistant. Be accurate and concise.")
-                if (result.isBlank()) fallbackSummarize(text) else result
-            } catch (e: OutOfMemoryError) {
-                Log.e(TAG, "OOM during summarize")
-                fallbackSummarize(text)
+
+                val result = generateResponse(
+                    userContent = prompt,
+                    systemInstruction = "You are a concise reading assistant. Respond with bullet points only."
+                )
+                result.ifBlank { SummaryEngine.summarize(text) }
+            } catch (_: OutOfMemoryError) {
+                SummaryEngine.summarize(text)
             } catch (e: Exception) {
-                Log.w(TAG, "Summarize failed: ${e.message}")
-                fallbackSummarize(text)
+                Log.w(TAG, "summarize failed: ${e.message}")
+                SummaryEngine.summarize(text)
             }
         }
     }
 
+    /**
+     * Generates 2-4 topic tags for a saved article.
+     * Returns an empty list when no model is available (tags are optional).
+     */
     suspend fun generateTags(title: String, text: String): List<String> {
         if (title.isBlank() && text.isBlank()) return emptyList()
         return withContext(Dispatchers.IO) {
@@ -224,14 +184,19 @@ class LlmSummarizationService(private val context: Context) {
                 initialize()
                 if (!isInitialized) return@withContext emptyList()
 
-                val userMsg = "Generate 2 to 4 short tags for this content.\n" +
-                    "Rules: each tag is 1–3 words, lowercase, no spaces (use hyphens), no hashtags.\n" +
+                val prompt = "Generate 2-4 topic tags.\n" +
+                    "Rules: 1-3 words each, lowercase, use-hyphens-not-spaces, no # symbol.\n" +
                     "Output ONLY the tags, one per line, nothing else.\n\n" +
-                    "Title: $title\nContent: ${text.take(600)}"
-                val raw = generateResponse(userMsg, "You are a content tagger. Output only tags.")
+                    "Title: $title\nContent excerpt: ${text.take(600)}"
+
+                val raw = generateResponse(
+                    userContent = prompt,
+                    systemInstruction = "You are a content tagger. Output tags only, one per line."
+                )
                 raw.lines()
                     .map { it.trim().lowercase().replace(Regex("[^a-z0-9\\-]"), "").take(30) }
                     .filter { it.isNotBlank() && it.length >= 2 }
+                    .distinct()
                     .take(4)
             } catch (e: Exception) {
                 Log.w(TAG, "generateTags failed: ${e.message}")
@@ -242,7 +207,8 @@ class LlmSummarizationService(private val context: Context) {
 
     /**
      * Sends one turn in a persistent multi-turn chat session.
-     * Call [resetChatSession] with a system prompt before the first turn.
+     * Call [resetChatSession] with a system prompt before the first turn or
+     * whenever you want to reset the conversation context.
      */
     suspend fun chatTurn(userContent: String): String {
         if (userContent.isBlank()) return ""
@@ -252,80 +218,45 @@ class LlmSummarizationService(private val context: Context) {
                 if (!isInitialized) return@withContext buildNotFoundMessage()
 
                 val eng = engine ?: return@withContext buildNotFoundMessage()
+
                 if (chatConversation == null) {
                     val config = ConversationConfig(
                         systemInstruction = Contents.of(chatSystemPrompt)
                     )
                     chatConversation = eng.createConversation(config)
                 }
+
                 val sb = StringBuilder()
-                chatConversation!!.sendMessageAsync(userContent).collect { sb.append(it) }
-                sb.toString().trim()
-            } catch (e: OutOfMemoryError) {
-                Log.e(TAG, "OOM during chat")
+                chatConversation!!.sendMessageAsync(userContent).collect { token -> sb.append(token) }
+                sb.toString().trim().ifBlank { "I couldn't generate a response. Please try again." }
+            } catch (_: OutOfMemoryError) {
+                Log.e(TAG, "OOM during chat — resetting engine")
                 resetEngine()
-                "Out of memory — the model was unloaded. Please try again."
+                "Out of memory — please close other apps and try again."
             } catch (e: Exception) {
-                Log.w(TAG, "Chat inference failed: ${e.message}")
+                Log.w(TAG, "chatTurn failed: ${e.message}")
                 "Something went wrong: ${e.message}"
             }
         }
     }
 
-    // ── Status accessors ──────────────────────────────────────────────────────
-
     fun isLlmLoaded(): Boolean = isInitialized && engine != null
     fun getLoadedModelName(): String? = loadedModelPath?.let { File(it).name }
 
     fun close() {
-        chatConversation?.close()
+        chatConversation?.runCatching { close() }
         chatConversation = null
-        engine?.close()
+        engine?.runCatching { close() }
         engine = null
         isInitialized = false
-        isGpuActive = false
         initAttempted = false
-        initFailReason = ""
-        lastCandidatePaths = emptyList()
         preferredModelPath = null
         loadedModelPath = null
     }
 
-    // ── Fallback (no model available) ─────────────────────────────────────────
-
-    private fun buildNotFoundMessage(): String {
-        return if (initFailReason == "load_failed") buildString {
-            append("Model file found but failed to load.\n\nErrors:\n")
-            lastLoadErrors.forEach { append("• $it\n") }
-            append("\nCommon causes:\n")
-            append("• Not enough RAM — close other apps and try again\n")
-            append("• Model file corrupted — re-download from Hugging Face\n")
-            append("• Storage permission denied in Android Settings → Apps → Permissions")
-        } else {
-            "No model found. Download gemma-4-E2B-it.litertlm from Hugging Face " +
-            "and place it in /storage/emulated/0/Download/gemma/\n\n" +
-            "Or use Settings → AI Model → Import to pick the file directly."
-        }
-    }
-
-    private fun fallbackSummarize(text: String): String {
-        val boilerplate = listOf(
-            "subscribe", "newsletter", "sign up", "sign in", "log in",
-            "privacy policy", "terms of service", "cookie", "advertisement",
-            "sponsored", "click here", "read more", "share this", "follow us"
-        )
-        return text
-            .split(Regex("""(?<=[.!?])\s+"""))
-            .map { it.trim() }
-            .filter { sentence ->
-                val lower = sentence.lowercase()
-                val wordCount = sentence.split(Regex("\\s+")).size
-                sentence.length in 60..280 &&
-                wordCount >= 10 &&
-                boilerplate.none { lower.contains(it) } &&
-                !sentence.startsWith("©") && !sentence.startsWith("@")
-            }
-            .take(3)
-            .joinToString("\n") { "• $it" }
-    }
+    private fun buildNotFoundMessage(): String =
+        "No AI model found.\n\nTo enable Chat AI:\n" +
+        "1. Download gemma-4-E2B-it.litertlm from Hugging Face (google/gemma-4-on-device)\n" +
+        "2. Go to Settings → Import model file\n" +
+        "3. Select the downloaded .litertlm file"
 }

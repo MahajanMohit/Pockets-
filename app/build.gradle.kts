@@ -65,9 +65,8 @@ android {
 
     kotlinOptions {
         jvmTarget = "11"
-        // litertlm-android:0.10.0 was compiled with Kotlin 2.3.0 metadata.
-        // Our project uses Kotlin 2.0.21 which only reads up to 2.0.0 metadata.
-        // This flag tells the compiler to skip the version check so KSP/Room can proceed.
+        // litertlm-android is compiled with newer Kotlin metadata;
+        // this flag lets KSP/Room proceed without version mismatch errors.
         freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
 
@@ -87,25 +86,17 @@ android {
     }
 }
 
-// Kotlin 2.0 merged kotlin-stdlib-jdk7/jdk8 into kotlin-stdlib.
-// Some transitive deps still pull in the pre-2.0 artifacts, causing clashes.
-// Substitute both jdk7/jdk8 with kotlin-stdlib itself so they never land
-// on the compile classpath.
+// litertlm-android ships with newer Kotlin stdlib metadata.
+// Force our Kotlin version throughout so the runtime classpath stays consistent.
 configurations.all {
     resolutionStrategy {
-        // Force Kotlin runtime libs to the project's compiler version so that
-        // litertlm-android's transitive kotlin-reflect:2.3.x / kotlin-stdlib:2.3.x
-        // don't land on the runtime classpath compiled against a different stdlib ABI.
         force("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
         force("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
-
         dependencySubstitution {
             substitute(module("org.jetbrains.kotlin:kotlin-stdlib-jdk8"))
                 .using(module("org.jetbrains.kotlin:kotlin-stdlib:2.0.21"))
-                .because("kotlin-stdlib-jdk8 merged into kotlin-stdlib in Kotlin 2.0")
             substitute(module("org.jetbrains.kotlin:kotlin-stdlib-jdk7"))
                 .using(module("org.jetbrains.kotlin:kotlin-stdlib:2.0.21"))
-                .because("kotlin-stdlib-jdk7 merged into kotlin-stdlib in Kotlin 2.0")
         }
     }
 }
@@ -136,7 +127,7 @@ dependencies {
     // Jsoup
     implementation(libs.jsoup)
 
-    // LiteRT-LM — Gemma 4 E2B / E4B inference (.litertlm files)
+    // LiteRT-LM — Gemma 4 E2B on-device inference (CPU only)
     implementation(libs.litertlm.android)
 
     // Chrome Custom Tabs
@@ -160,9 +151,6 @@ dependencies {
 
     // Coil (image loading)
     implementation(libs.coil.compose)
-
-    // MLKit Text Recognition (OCR for screenshots)
-    implementation(libs.mlkit.text.recognition)
 
     // Testing
     testImplementation(libs.junit)

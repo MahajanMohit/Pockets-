@@ -1,9 +1,5 @@
 package com.zendeck.app.ui.screen
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +18,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.components.LinkActionSheet
 import com.zendeck.app.ui.components.LinkCard
-import com.zendeck.app.ui.components.SwipeableCard
 import com.zendeck.app.ui.components.TagEditDialog
 import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.theme.LocalZenDeckColors
@@ -41,7 +36,6 @@ fun ArchiveScreen(
     var expandedLinkId by remember { mutableStateOf<String?>(null) }
     var actionSheetLink by remember { mutableStateOf<LinkItem?>(null) }
     var editingLink by remember { mutableStateOf<LinkItem?>(null) }
-    val restoredIds = remember { mutableStateListOf<String>() }
 
     Column(modifier = modifier.fillMaxSize()) {
         Text(
@@ -86,13 +80,13 @@ fun ArchiveScreen(
         )
 
         // ── Content ───────────────────────────────────────────────────────────
-        if (links.isEmpty() && restoredIds.isEmpty()) {
+        if (links.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = if (searchQuery.isNotEmpty())
                         "No archived links match \"$searchQuery\""
                     else
-                        "Nothing archived yet.\nSwipe left on any inbox card to archive it.",
+                        "Nothing archived yet.\nLong-press any inbox card to archive it.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.textSecondary,
                     textAlign = TextAlign.Center,
@@ -105,32 +99,18 @@ fun ArchiveScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(links, key = { it.id }) { link ->
-                    AnimatedVisibility(
-                        visible = link.id !in restoredIds,
-                        exit = shrinkVertically(animationSpec = tween(280)) +
-                               fadeOut(animationSpec = tween(200))
-                    ) {
-                        val isExpanded = expandedLinkId == link.id
-                        SwipeableCard(
-                            onSwipeToRestore = {
-                                restoredIds.add(link.id)
-                                viewModel.restoreLink(link.id)
-                                if (expandedLinkId == link.id) expandedLinkId = null
-                            }
-                        ) {
-                            LinkCard(
-                                link = link,
-                                isExpanded = isExpanded,
-                                onTap = {
-                                    expandedLinkId = if (isExpanded) null else link.id
-                                },
-                                onDoubleTap = {
-                                    viewModel.openInCustomTab(context, link.url)
-                                },
-                                onLongPress = { actionSheetLink = link }
-                            )
-                        }
-                    }
+                    val isExpanded = expandedLinkId == link.id
+                    LinkCard(
+                        link = link,
+                        isExpanded = isExpanded,
+                        onTap = {
+                            expandedLinkId = if (isExpanded) null else link.id
+                        },
+                        onDoubleTap = {
+                            viewModel.openInCustomTab(context, link.url)
+                        },
+                        onLongPress = { actionSheetLink = link }
+                    )
                 }
                 item { Spacer(Modifier.height(8.dp)) }
             }
@@ -151,7 +131,6 @@ fun ArchiveScreen(
                 actionSheetLink = null
             },
             onRestore = {
-                restoredIds.add(link.id)
                 viewModel.restoreLink(link.id)
                 if (expandedLinkId == link.id) expandedLinkId = null
                 actionSheetLink = null

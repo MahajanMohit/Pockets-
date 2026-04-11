@@ -3,20 +3,17 @@ package com.zendeck.app.ui.theme
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
-// ── Invariant brand / semantic colors ────────────────────────────────────────
-val AccentTeal = Color(0xFF00897B)
-val AccentTealDim = Color(0xFF00695C)
-val SlateGray = Color(0xFF607D8B)
+// ── Brand / semantic colors (theme-invariant) ─────────────────────────────────
+val AccentTeal       = Color(0xFF00897B)
+val AccentTealDim    = Color(0xFF00695C)
+val SlateGray        = Color(0xFF607D8B)
 
-// TTL Urgency colors (same in both themes)
-val UrgencyFresh    = Color(0xFF1B5E20)   // dark green  (Green 900)
-val UrgencyWarning  = Color(0xFF00695C)   // dark teal   (Teal 700)
-val UrgencyCritical = Color(0xFF4A148C)   // dark purple (Purple 900)
+// TTL urgency — same in both themes
+val UrgencyFresh     = Color(0xFF1B5E20)   // Green 900
+val UrgencyWarning   = Color(0xFF00695C)   // Teal 700
+val UrgencyCritical  = Color(0xFF4A148C)   // Purple 900
 
-val SwipeGreenBackground = Color(0xFF1B5E20)
-val SwipeRedBackground = Color(0xFFB71C1C)
-
-// ── Theme-aware color palette ─────────────────────────────────────────────────
+// ── Theme-aware palette ───────────────────────────────────────────────────────
 data class ZenDeckColors(
     val background: Color,
     val surface: Color,
@@ -29,39 +26,48 @@ data class ZenDeckColors(
     val slateGrayLight: Color,
 )
 
+/**
+ * Dark theme — pure OLED black base, comfortable for reading in low light.
+ * Cards float on a very dark surface with subtle borders.
+ */
 fun darkZenDeckColors() = ZenDeckColors(
-    background    = Color(0xFF000000),
-    surface       = Color(0xFF0D0D0D),
-    cardBackground = Color(0xFF1A1A1A),
-    cardBorder    = Color(0xFF2A2A2A),
-    textPrimary   = Color(0xFFECEFF1),
-    textSecondary = Color(0xFF90A4AE),
-    textDisabled  = Color(0xFF546E7A),
-    divider       = Color(0xFF1E1E1E),
-    slateGrayLight = Color(0xFF90A4AE),
+    background     = Color(0xFF000000),
+    surface        = Color(0xFF0D0D0D),
+    cardBackground = Color(0xFF141414),
+    cardBorder     = Color(0xFF262626),
+    textPrimary    = Color(0xFFE8EAED),
+    textSecondary  = Color(0xFF8A9BA8),
+    textDisabled   = Color(0xFF4A5568),
+    divider        = Color(0xFF1A1A1A),
+    slateGrayLight = Color(0xFF8A9BA8),
 )
 
+/**
+ * Light theme — clean, reader-friendly.
+ * Inspired by read-later apps: white cards on a soft neutral background,
+ * dark charcoal text for contrast without harshness.
+ */
 fun lightZenDeckColors() = ZenDeckColors(
-    background    = Color(0xFFFAF7F2),   // warm cream
-    surface       = Color(0xFFEEE9E0),   // warm off-white
-    cardBackground = Color(0xFFFFFFFF),  // white cards float on cream
-    cardBorder    = Color(0xFFB2DFDB),   // light teal (Material Teal 100)
-    textPrimary   = Color(0xFF1C2B2A),   // dark teal-tinted
-    textSecondary = Color(0xFF546E7A),
-    textDisabled  = Color(0xFF90A4AE),
-    divider       = Color(0xFFD6CFC6),   // warm gray
-    slateGrayLight = Color(0xFF546E7A),
+    background     = Color(0xFFF2F2F7),   // iOS-style system gray 6
+    surface        = Color(0xFFE5E5EA),   // iOS system gray 5
+    cardBackground = Color(0xFFFFFFFF),   // pure white cards
+    cardBorder     = Color(0xFFD1D1D6),   // subtle border
+    textPrimary    = Color(0xFF1C1C1E),   // near-black (iOS label)
+    textSecondary  = Color(0xFF6E6E73),   // iOS secondary label
+    textDisabled   = Color(0xFFAEAEB2),   // iOS tertiary label
+    divider        = Color(0xFFE0E0E5),
+    slateGrayLight = Color(0xFF6E6E73),
 )
 
 val LocalZenDeckColors = compositionLocalOf { darkZenDeckColors() }
 
-// Legacy top-level aliases kept for non-theming uses (urgency colors, etc.)
-val OledBlack = Color(0xFF000000)
-val SurfaceDark = Color(0xFF0D0D0D)
-val CardBackground = Color(0xFF1A1A1A)
-val CardBorderDefault = Color(0xFF2A2A2A)
-val TextPrimary = Color(0xFFECEFF1)
-val TextSecondary = Color(0xFF90A4AE)
-val TextDisabled = Color(0xFF546E7A)
-val DividerColor = Color(0xFF1E1E1E)
-val SlateGrayLight = Color(0xFF90A4AE)
+// ── Legacy top-level aliases (referenced in non-theming contexts) ─────────────
+val OledBlack         = Color(0xFF000000)
+val SurfaceDark       = Color(0xFF0D0D0D)
+val CardBackground    = Color(0xFF141414)
+val CardBorderDefault = Color(0xFF262626)
+val TextPrimary       = Color(0xFFE8EAED)
+val TextSecondary     = Color(0xFF8A9BA8)
+val TextDisabled      = Color(0xFF4A5568)
+val DividerColor      = Color(0xFF1A1A1A)
+val SlateGrayLight    = Color(0xFF8A9BA8)

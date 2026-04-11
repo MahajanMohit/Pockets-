@@ -3,42 +3,37 @@ package com.zendeck.app.ui.screen
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.zendeck.app.ui.theme.AccentTeal
-import com.zendeck.app.ui.theme.LocalZenDeckColors
-import com.zendeck.app.ui.theme.ZenDeckColors
+import coil.compose.AsyncImage
+import com.zendeck.app.ui.theme.*
 import com.zendeck.app.ui.viewmodel.ChatMessage
 import com.zendeck.app.ui.viewmodel.ChatViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(
@@ -49,39 +44,40 @@ fun ChatScreen(
     val isLoading       by chatViewModel.isLoading.collectAsStateWithLifecycle()
     val modelAvailable  by chatViewModel.modelAvailable.collectAsStateWithLifecycle()
     val activeModelName by chatViewModel.activeModelName.collectAsStateWithLifecycle()
-    val selectedImageUri by chatViewModel.selectedImageUri.collectAsStateWithLifecycle()
+    val pendingImage    by chatViewModel.pendingImageUri.collectAsStateWithLifecycle()
     val importStatus    by chatViewModel.importStatus.collectAsStateWithLifecycle()
     val c               = LocalZenDeckColors.current
     val listState       = rememberLazyListState()
-    val scope           = rememberCoroutineScope()
+    val focusManager    = LocalFocusManager.current
     var inputText       by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        chatViewModel.refreshModels()
-        chatViewModel.loadArticleContext()
-    }
-
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
-    }
-
-    val modelImportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> if (uri != null) chatViewModel.importModel(uri) }
+    val snackbarState   = remember { SnackbarHostState() }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? -> chatViewModel.setSelectedImage(uri) }
+    ) { uri: Uri? -> chatViewModel.setPendingImage(uri) }
 
-    val snackbarHostState = remember { SnackbarHostState() }
+    val modelImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> uri?.let { chatViewModel.importModelFile(it) } }
+
+    LaunchedEffect(Unit) { chatViewModel.refreshModelState() }
+
+    // Auto-scroll to latest message
+    LaunchedEffect(messages.size, isLoading) {
+        if (messages.isNotEmpty() || isLoading) {
+            listState.animateScrollToItem(maxOf(0, messages.size - 1))
+        }
+    }
+
+    // Snackbar for import status
     LaunchedEffect(importStatus) {
         when (val s = importStatus) {
             is ChatViewModel.ImportStatus.Done -> {
-                snackbarHostState.showSnackbar("Model '${s.fileName}' imported. Restart the chat to use it.")
+                snackbarState.showSnackbar("'${s.fileName}' imported — restart the chat to use it.")
                 chatViewModel.clearImportStatus()
             }
             is ChatViewModel.ImportStatus.Failed -> {
-                snackbarHostState.showSnackbar("Import failed: ${s.error}")
+                snackbarState.showSnackbar("Import failed: ${s.error}")
                 chatViewModel.clearImportStatus()
             }
             else -> {}
@@ -91,325 +87,343 @@ fun ChatScreen(
     Scaffold(
         modifier = modifier.fillMaxSize(),
         containerColor = c.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarState) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(c.background)
         ) {
             // ── Header ────────────────────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, top = 12.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Assistant",
-                        color = c.textPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
+                        "Chat AI",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = c.textPrimary
                     )
+                    val subtitle = when {
+                        importStatus is ChatViewModel.ImportStatus.Copying ->
+                            "Importing ${(importStatus as ChatViewModel.ImportStatus.Copying).fileName}…"
+                        activeModelName != null ->
+                            activeModelName!!.removeSuffix(".litertlm") + " · CPU"
+                        else -> "No model loaded"
+                    }
                     Text(
-                        text = when {
-                            importStatus is ChatViewModel.ImportStatus.Copying ->
-                                "Importing ${(importStatus as ChatViewModel.ImportStatus.Copying).fileName}…"
-                            activeModelName != null -> "on-device · ${activeModelName!!.removeSuffix(".litertlm")}"
-                            else -> "No model — tap the folder icon to import"
-                        },
-                        color = if (modelAvailable) AccentTeal else c.textSecondary,
-                        fontSize = 12.sp
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (modelAvailable) AccentTeal else c.textDisabled
                     )
                 }
                 if (messages.size > 1) {
-                    IconButton(onClick = { chatViewModel.clearMessages() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear conversation",
-                            tint = c.textSecondary)
+                    IconButton(onClick = { chatViewModel.clearChat() }) {
+                        Icon(Icons.Default.DeleteSweep, "Clear chat", tint = c.textSecondary,
+                            modifier = Modifier.size(20.dp))
                     }
                 }
+                // Import model shortcut
                 IconButton(onClick = { modelImportLauncher.launch(arrayOf("*/*")) }) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = "Import model",
-                        tint = AccentTeal)
+                    Icon(Icons.Default.FolderOpen, "Import model",
+                        tint = if (modelAvailable) c.textSecondary else AccentTeal,
+                        modifier = Modifier.size(20.dp))
                 }
             }
 
-            HorizontalDivider(color = c.textSecondary.copy(alpha = 0.15f))
+            // ── No-model banner ───────────────────────────────────────────────
+            AnimatedVisibility(!modelAvailable) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = AccentTeal.copy(alpha = 0.10f)
+                ) {
+                    Text(
+                        "Import a Gemma 4 2B .litertlm model file via the folder icon above, or in Settings.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AccentTeal,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
+                }
+            }
 
-            // ── Message list ──────────────────────────────────────────────────
+            // ── Messages ──────────────────────────────────────────────────────
             LazyColumn(
                 state = listState,
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(messages, key = { it.hashCode() }) { msg ->
-                    MessageBubble(msg = msg, colors = c)
+                items(messages, key = { it.id }) { message ->
+                    ChatBubble(message = message, c = c)
                 }
+
+                // Typing indicator
                 if (isLoading) {
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.Start
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp))
-                                    .background(c.surface)
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            Surface(
+                                shape = RoundedCornerShape(
+                                    topStart = 4.dp, topEnd = 16.dp,
+                                    bottomStart = 16.dp, bottomEnd = 16.dp
+                                ),
+                                color = c.surface
                             ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    color = AccentTeal,
-                                    strokeWidth = 2.dp,
-                                    trackColor = AccentTeal.copy(alpha = 0.15f)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = AccentTeal,
+                                        trackColor = AccentTeal.copy(alpha = 0.2f)
+                                    )
+                                    Text(
+                                        "Generating…",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = c.textSecondary
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                item { Spacer(Modifier.height(4.dp)) }
             }
 
-            // ── Input row ─────────────────────────────────────────────────────
-            HorizontalDivider(color = c.textSecondary.copy(alpha = 0.15f))
-
-            if (selectedImageUri != null) {
-                Row(
+            // ── Pending image preview ─────────────────────────────────────────
+            if (pendingImage != null) {
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(c.surface)
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    AsyncImage(
+                        model = pendingImage,
+                        contentDescription = "Image to send",
+                        modifier = Modifier
+                            .height(80.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                    IconButton(
+                        onClick = { chatViewModel.setPendingImage(null) },
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Icon(
+                            Icons.Default.Cancel, "Remove image",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(50))
+                        )
+                    }
+                }
+            }
+
+            // ── Input bar ─────────────────────────────────────────────────────
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = c.surface,
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .navigationBarsPadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.AttachFile, null, tint = AccentTeal,
-                        modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = selectedImageUri!!.lastPathSegment ?: "Image attached",
-                        color = AccentTeal, fontSize = 12.sp,
-                        modifier = Modifier.weight(1f), maxLines = 1
-                    )
-                    TextButton(
-                        onClick = { chatViewModel.setSelectedImage(null) },
-                        contentPadding = PaddingValues(horizontal = 4.dp)
-                    ) { Text("Remove", color = c.textSecondary, fontSize = 11.sp) }
-                }
-            }
+                    // Image attach button
+                    IconButton(onClick = { imagePickerLauncher.launch(arrayOf("image/*")) }) {
+                        Icon(
+                            Icons.Default.AttachFile, "Attach image",
+                            tint = if (pendingImage != null) AccentTeal else c.textSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(c.background)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (modelAvailable) {
-                    IconButton(
-                        onClick = { imagePickerLauncher.launch(arrayOf("image/*")) },
+                    // Text field
+                    Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(c.cardBackground)
+                            .weight(1f)
+                            .background(c.cardBackground, RoundedCornerShape(22.dp))
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Attach image",
-                            tint = if (selectedImageUri != null) AccentTeal else c.textSecondary,
-                            modifier = Modifier.size(18.dp))
+                        if (inputText.isEmpty()) {
+                            Text(
+                                "Ask anything…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = c.textDisabled
+                            )
+                        }
+                        BasicTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = c.textPrimary),
+                            cursorBrush = SolidColor(AccentTeal),
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 5
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Send button
+                    val canSend = !isLoading && (inputText.isNotBlank() || pendingImage != null)
+                    FilledIconButton(
+                        onClick = {
+                            if (canSend) {
+                                focusManager.clearFocus()
+                                chatViewModel.sendMessage(inputText.trim(), pendingImage)
+                                inputText = ""
+                            }
+                        },
+                        enabled = canSend,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = AccentTeal,
+                            disabledContainerColor = AccentTeal.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Send, "Send",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
+            }
+        }
+    }
+}
 
-                OutlinedTextField(
-                    value = inputText,
-                    onValueChange = { inputText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text("Message…", color = c.textSecondary, fontSize = 14.sp)
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentTeal,
-                        unfocusedBorderColor = c.textSecondary.copy(alpha = 0.3f),
-                        focusedTextColor = c.textPrimary,
-                        unfocusedTextColor = c.textPrimary,
-                        cursorColor = AccentTeal
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    maxLines = 5,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (inputText.isNotBlank() && !isLoading) {
-                            chatViewModel.sendMessage(inputText)
-                            inputText = ""
-                            scope.launch {
-                                if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
-                            }
-                        }
-                    })
-                )
-                IconButton(
-                    onClick = {
-                        if (inputText.isNotBlank() && !isLoading) {
-                            chatViewModel.sendMessage(inputText)
-                            inputText = ""
-                            scope.launch {
-                                if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
-                            }
-                        }
-                    },
-                    enabled = inputText.isNotBlank() && !isLoading,
+// ── Chat bubble ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun ChatBubble(message: ChatMessage, c: ZenDeckColors) {
+    if (message.isUser) {
+        // User bubble — right-aligned, teal
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End
+        ) {
+            message.imageUri?.let { uri ->
+                AsyncImage(
+                    model = uri,
+                    contentDescription = null,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            if (inputText.isNotBlank() && !isLoading) AccentTeal
-                            else AccentTeal.copy(alpha = 0.25f)
-                        )
-                        .size(48.dp)
+                        .fillMaxWidth(0.75f)
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+            if (message.text.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(
+                        topStart = 16.dp, topEnd = 4.dp,
+                        bottomStart = 16.dp, bottomEnd = 16.dp
+                    ),
+                    color = AccentTeal,
+                    modifier = Modifier.widthIn(max = 300.dp)
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send",
-                        tint = c.background, modifier = Modifier.size(20.dp))
+                    Text(
+                        text = message.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
                 }
             }
+        }
+    } else {
+        // Assistant bubble — left-aligned, wider, rendered with simple markdown
+        Surface(
+            shape = RoundedCornerShape(
+                topStart = 4.dp, topEnd = 16.dp,
+                bottomStart = 16.dp, bottomEnd = 16.dp
+            ),
+            color = c.surface,
+            modifier = Modifier.fillMaxWidth(0.92f)
+        ) {
+            Text(
+                text = renderMarkdown(message.text, c),
+                style = MaterialTheme.typography.bodyMedium,
+                color = c.textPrimary,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            )
         }
     }
 }
 
-// ── Message bubble with Markdown ─────────────────────────────────────────────
-
+/** Renders **bold**, *italic*, and bullet points from markdown-like text. */
 @Composable
-private fun MessageBubble(msg: ChatMessage, colors: ZenDeckColors) {
-    val isUser = msg.isUser
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-    ) {
-        if (isUser) {
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 280.dp)
-                    .clip(RoundedCornerShape(18.dp, 4.dp, 18.dp, 18.dp))
-                    .background(AccentTeal)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(text = msg.text, color = colors.background, fontSize = 15.sp, lineHeight = 22.sp)
-            }
+private fun renderMarkdown(
+    text: String,
+    c: ZenDeckColors
+) = buildAnnotatedString {
+    text.lines().forEach { line ->
+        val trimmed = line.trim()
+        // Bullet point
+        if (trimmed.startsWith("•") || trimmed.startsWith("-") || trimmed.startsWith("*")) {
+            val content = trimmed.trimStart('•', '-', '*', ' ')
+            append("• ")
+            appendInlineMarkdown(content, c)
+        } else if (trimmed.startsWith("**") && trimmed.endsWith("**")) {
+            // Heading / bold line
+            pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+            append(trimmed.removeSurrounding("**"))
+            pop()
         } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.92f)
-                    .clip(RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp))
-                    .background(colors.surface)
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
-            ) {
-                MarkdownText(
-                    text = msg.text,
-                    textColor = colors.textPrimary,
-                    codeBackground = colors.background
-                )
-            }
+            appendInlineMarkdown(trimmed, c)
         }
+        append("\n")
     }
 }
 
-// ── Markdown renderer ─────────────────────────────────────────────────────────
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineMarkdown(
+    text: String,
+    c: ZenDeckColors
+) {
+    // Simple bold (**text**) and italic (*text*) parsing
+    val boldRegex = Regex("""\*\*(.+?)\*\*""")
+    val italicRegex = Regex("""\*(.+?)\*""")
 
-@Composable
-private fun MarkdownText(text: String, textColor: Color, codeBackground: Color) {
-    val paragraphs = text.split(Regex("\n{2,}"))
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (paragraph in paragraphs) {
-            val lines = paragraph.lines()
-            when {
-                // Bullet list
-                lines.all { it.isBlank() || it.trimStart().startsWith("- ") || it.trimStart().startsWith("* ") || it.trimStart().startsWith("• ") } && lines.any { !it.isBlank() } -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for (line in lines) {
-                            if (line.isBlank()) continue
-                            val content = line.trimStart().removePrefix("- ").removePrefix("* ").removePrefix("• ")
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("•", color = AccentTeal, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Text(
-                                    text = parseInline(content, codeBackground),
-                                    color = textColor, fontSize = 15.sp, lineHeight = 22.sp
-                                )
-                            }
-                        }
-                    }
-                }
-                // Heading
-                paragraph.startsWith("### ") -> Text(
-                    text = paragraph.removePrefix("### "),
-                    color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, lineHeight = 22.sp
-                )
-                paragraph.startsWith("## ") -> Text(
-                    text = paragraph.removePrefix("## "),
-                    color = textColor, fontSize = 17.sp, fontWeight = FontWeight.Bold, lineHeight = 24.sp
-                )
-                paragraph.startsWith("# ") -> Text(
-                    text = paragraph.removePrefix("# "),
-                    color = textColor, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 26.sp
-                )
-                // Code block
-                paragraph.startsWith("```") -> {
-                    val code = paragraph.lines().drop(1).dropLastWhile { it.startsWith("```") || it.isBlank() }.joinToString("\n")
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = codeBackground
-                    ) {
-                        Text(
-                            text = code,
-                            color = AccentTeal,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                        )
-                    }
-                }
-                // Regular paragraph (possibly multi-line)
-                else -> Text(
-                    text = parseInline(paragraph, codeBackground),
-                    color = textColor, fontSize = 15.sp, lineHeight = 22.sp
-                )
-            }
-        }
-    }
-}
-
-private fun parseInline(text: String, @Suppress("UNUSED_PARAMETER") codeBackground: Color) = buildAnnotatedString {
     var remaining = text
     while (remaining.isNotEmpty()) {
-        when {
-            remaining.startsWith("**") -> {
-                val end = remaining.indexOf("**", 2)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(remaining.substring(2, end)) }
-                    remaining = remaining.substring(end + 2)
-                } else { append("**"); remaining = remaining.substring(2) }
-            }
-            remaining.startsWith("*") -> {
-                val end = remaining.indexOf("*", 1)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append(remaining.substring(1, end)) }
-                    remaining = remaining.substring(end + 1)
-                } else { append("*"); remaining = remaining.substring(1) }
-            }
-            remaining.startsWith("`") -> {
-                val end = remaining.indexOf("`", 1)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp)) {
-                        append(remaining.substring(1, end))
-                    }
-                    remaining = remaining.substring(end + 1)
-                } else { append("`"); remaining = remaining.substring(1) }
-            }
-            else -> {
-                val nextSpecial = listOf("**", "*", "`")
-                    .mapNotNull { m -> remaining.indexOf(m).takeIf { it > 0 } }
-                    .minOrNull() ?: remaining.length
-                append(remaining.substring(0, nextSpecial))
-                remaining = remaining.substring(nextSpecial)
-            }
+        val boldMatch = boldRegex.find(remaining)
+        val italicMatch = italicRegex.find(remaining)
+        val nextMatch = listOfNotNull(boldMatch, italicMatch).minByOrNull { it.range.first }
+
+        if (nextMatch == null) {
+            append(remaining)
+            break
         }
+        // Append text before the match
+        if (nextMatch.range.first > 0) append(remaining.take(nextMatch.range.first))
+
+        if (nextMatch == boldMatch) {
+            pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+            append(nextMatch.groupValues[1])
+            pop()
+        } else {
+            pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
+            append(nextMatch.groupValues[1])
+            pop()
+        }
+        remaining = remaining.drop(nextMatch.range.last + 1)
     }
 }

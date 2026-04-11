@@ -62,6 +62,9 @@ class ZenDeckWidget : GlanceAppWidget() {
                 title = displayLink?.title,
                 timeUntilExpiry = displayLink?.timeUntilExpiry,
                 domain = displayLink?.domain,
+                tags = displayLink?.tags
+                    ?.filter { !it.startsWith("auto:") && !it.startsWith("llm:") }
+                    ?.take(3) ?: emptyList(),
                 linkId = displayLink?.id
             )
         }
@@ -72,6 +75,7 @@ class ZenDeckWidget : GlanceAppWidget() {
         title: String?,
         timeUntilExpiry: String?,
         domain: String?,
+        tags: List<String>,
         linkId: String?
     ) {
         val context = LocalContext.current
@@ -98,7 +102,7 @@ class ZenDeckWidget : GlanceAppWidget() {
                 verticalAlignment = Alignment.Vertical.Top
             ) {
                 Text(
-                    text = "AI Link Triage",
+                    text = "Pockets",
                     style = TextStyle(
                         color = ColorProvider(Color(0xFF00897B)),
                         fontSize = 11.sp,
@@ -117,6 +121,19 @@ class ZenDeckWidget : GlanceAppWidget() {
                             fontWeight = FontWeight.Normal
                         )
                     )
+
+                    // Tags row (if any)
+                    if (tags.isNotEmpty()) {
+                        Spacer(modifier = GlanceModifier.height(4.dp))
+                        Text(
+                            text = tags.joinToString("  ") { "#$it" },
+                            style = TextStyle(
+                                color = ColorProvider(Color(0xFF00897B).copy(alpha = 0.85f)),
+                                fontSize = 10.sp
+                            )
+                        )
+                    }
+
                     Spacer(modifier = GlanceModifier.defaultWeight())
 
                     Row(
@@ -142,7 +159,7 @@ class ZenDeckWidget : GlanceAppWidget() {
                 } else {
                     Spacer(modifier = GlanceModifier.defaultWeight())
                     Text(
-                        text = "Inbox clear ✓",
+                        text = "Inbox clear",
                         style = TextStyle(
                             color = ColorProvider(Color(0xFF388E3C)),
                             fontSize = 15.sp,

@@ -2,8 +2,7 @@ package com.zendeck.app.ui.screen
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,34 +16,35 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.server.ZenDeckNanoServer
 import com.zendeck.app.ui.theme.*
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel()
 ) {
-    val ttlHours        by viewModel.ttlHours.collectAsStateWithLifecycle()
-    val darkMode        by viewModel.darkMode.collectAsStateWithLifecycle()
-    val fontScale       by viewModel.fontScale.collectAsStateWithLifecycle()
-    val lanRunning      by viewModel.lanServerRunning.collectAsStateWithLifecycle()
-    val aiEnabled       by viewModel.aiSummariesEnabled.collectAsStateWithLifecycle()
-    val customPrompt    by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
-    val importStatus    by viewModel.importStatus.collectAsStateWithLifecycle()
-    val c               = LocalZenDeckColors.current
-    val clipboard       = LocalClipboardManager.current
-
-    val activeModelName by viewModel.activeModelNameState.collectAsStateWithLifecycle()
+    val ttlHours         by viewModel.ttlHours.collectAsStateWithLifecycle()
+    val darkMode         by viewModel.darkMode.collectAsStateWithLifecycle()
+    val fontScale        by viewModel.fontScale.collectAsStateWithLifecycle()
+    val lanRunning       by viewModel.lanServerRunning.collectAsStateWithLifecycle()
+    val customPrompt     by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
+    val activeModelName  by viewModel.activeModelName.collectAsStateWithLifecycle()
+    val modelImportStatus by viewModel.modelImportStatus.collectAsStateWithLifecycle()
+    val c                = LocalZenDeckColors.current
+    val clipboard        = LocalClipboardManager.current
+    val snackbarState    = remember { SnackbarHostState() }
+    val scope            = rememberCoroutineScope()
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -54,22 +54,34 @@ fun SettingsScreen(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importBackup(it) } }
 
-    // SAF file picker for the AI model — accepts any file type (.bin has no MIME)
-    val importModelLauncher = rememberLauncherForActivityResult(
+    val modelImportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importModelFile(it) } }
 
-    // Show snackbar when import finishes
-    LaunchedEffect(importStatus) {
-        if (importStatus is SettingsViewModel.ImportStatus.Done ||
-            importStatus is SettingsViewModel.ImportStatus.Failed
-        ) {
-            viewModel.clearImportStatus()
+    // Show snackbar when import completes
+    LaunchedEffect(modelImportStatus) {
+        when (val s = modelImportStatus) {
+            is SettingsViewModel.ModelImportStatus.Done -> {
+                scope.launch { snackbarState.showSnackbar("'${s.fileName}' imported successfully.") }
+                viewModel.clearModelImportStatus()
+            }
+            is SettingsViewModel.ModelImportStatus.Failed -> {
+                scope.launch { snackbarState.showSnackbar("Import failed: ${s.error}") }
+                viewModel.clearModelImportStatus()
+            }
+            else -> {}
         }
     }
 
+    Scaffold(
+        modifier = modifier,
+        containerColor = c.background,
+        snackbarHost = { SnackbarHost(snackbarState) }
+    ) { scaffoldPadding ->
+
     Column(
-        modifier = modifier
+        modifier = Modifier
+            .padding(scaffoldPadding)
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp)
@@ -91,7 +103,6 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // Font size
         Text("Font size", style = MaterialTheme.typography.labelMedium, color = c.textPrimary)
         Spacer(Modifier.height(8.dp))
         val fontOptions = listOf(
@@ -113,22 +124,22 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(8.dp),
                     color = if (isSelected) AccentTeal.copy(alpha = 0.18f) else c.surface,
                     border = if (isSelected)
-                        androidx.compose.foundation.BorderStroke(1.5.dp, AccentTeal)
+                        BorderStroke(1.5.dp, AccentTeal)
                     else
-                        androidx.compose.foundation.BorderStroke(1.dp, c.cardBorder)
+                        BorderStroke(1.dp, c.cardBorder)
                 ) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelMedium,
                         color = if (isSelected) AccentTeal else c.textSecondary,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.padding(vertical = 10.dp)
                     )
                 }
             }
         }
 
-        Divider(c)
+        SettingsDivider(c)
 
         // ── Default link expiry ─────────────────────────────────────────────
         SectionHeader("Default Link Expiry", c)
@@ -166,180 +177,36 @@ fun SettingsScreen(
                 }
         }
 
-        Divider(c)
+        SettingsDivider(c)
 
-        // ── AI Model ────────────────────────────────────────────────────────
-        SectionHeader("AI Model", c)
-
-        // Active model status
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Default.Memory, null,
-                tint = if (activeModelName != null) AccentTeal else c.textSecondary,
-                modifier = Modifier.size(16.dp)
-            )
-            Spacer(Modifier.width(6.dp))
-            val modelLabel = when {
-                importStatus is SettingsViewModel.ImportStatus.Copying ->
-                    "Copying ${(importStatus as SettingsViewModel.ImportStatus.Copying).fileName}…"
-                activeModelName != null -> activeModelName!!.removeSuffix(".litertlm") + " · GPU auto-detected"
-                else -> "No model — download and import below"
-            }
-            Text(modelLabel, style = MaterialTheme.typography.bodySmall,
-                color = if (activeModelName != null) AccentTeal else c.textSecondary)
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        // Download instructions
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(c.surface)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Text("How to get the model", style = MaterialTheme.typography.labelMedium, color = c.textPrimary)
-            Spacer(Modifier.height(2.dp))
-            Text("1. Search HuggingFace for:", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-            Text("   gemma-4-E2B-it.litertlm", style = MaterialTheme.typography.bodySmall, color = AccentTeal,
-                fontWeight = FontWeight.Medium)
-            Text("   (Model: google/gemma-4-on-device — ~2.6 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-            Text("2. Save the file to Downloads/ or pick it with the button below.", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-            Text("3. GPU is used automatically when available. No toggle needed.", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        OutlinedButton(
-            onClick = { importModelLauncher.launch(arrayOf("*/*")) },
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-            border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal),
-            enabled = importStatus !is SettingsViewModel.ImportStatus.Copying
-        ) {
-            Icon(Icons.Default.FileOpen, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (importStatus is SettingsViewModel.ImportStatus.Copying) "Copying…" else "Import model file (.litertlm)")
-        }
-
-        AnimatedVisibility(importStatus is SettingsViewModel.ImportStatus.Done) {
-            Text("Model imported. Open the Assistant tab to start chatting.",
-                style = MaterialTheme.typography.bodySmall, color = AccentTeal,
-                modifier = Modifier.padding(top = 4.dp))
-        }
-        AnimatedVisibility(importStatus is SettingsViewModel.ImportStatus.Failed) {
-            Text("Import failed: ${(importStatus as? SettingsViewModel.ImportStatus.Failed)?.error}",
-                style = MaterialTheme.typography.bodySmall, color = UrgencyWarning,
-                modifier = Modifier.padding(top = 4.dp))
-        }
-
-        LaunchedEffect(Unit) { viewModel.createModelFolder() }
-
-        Divider(c)
-
-        // ── AI Summaries ────────────────────────────────────────────────────
-        SectionHeader("AI Summaries", c)
+        // ── Summary ─────────────────────────────────────────────────────────
+        SectionHeader("Summary", c)
         Text(
-            "When enabled, AI Link Triage summarises each saved link using the on-device AI model. " +
-            "Turn off to use just the page title and description, or to compare output quality.",
+            "Pockets extracts key sentences from any link, screenshot or note you share. " +
+            "No AI model required — works instantly on-device.",
             style = MaterialTheme.typography.bodySmall, color = c.textSecondary
         )
-        Spacer(Modifier.height(10.dp))
-        ToggleRow(
-            label = "Enable AI summaries",
-            checked = aiEnabled,
-            icon = Icons.Default.AutoAwesome,
-            onToggle = { viewModel.setAiSummariesEnabled(it) },
-            c = c
-        )
-
-        AnimatedVisibility(aiEnabled) {
-            Column {
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Custom summary prompt",
-                    style = MaterialTheme.typography.labelMedium, color = c.textPrimary
-                )
-                Text(
-                    "Leave blank to use the built-in prompt (5–6 sentence prose summary). " +
-                    "Write your own to change the output style. The article text is always appended after your prompt.",
-                    style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-                )
-                Spacer(Modifier.height(8.dp))
-
-                var promptDraft by remember(customPrompt) { mutableStateOf(customPrompt) }
-                OutlinedTextField(
-                    value = promptDraft,
-                    onValueChange = { promptDraft = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = {
-                        Text(
-                            "e.g. Summarise in 2 sentences focusing on key takeaways.",
-                            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-                        )
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = AccentTeal,
-                        unfocusedBorderColor = c.textSecondary.copy(alpha = 0.4f),
-                        focusedTextColor = c.textPrimary,
-                        unfocusedTextColor = c.textPrimary,
-                        cursorColor = AccentTeal
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    minLines = 3, maxLines = 6
-                )
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { viewModel.setCustomSummaryPrompt(promptDraft) },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
-                    ) { Text("Save prompt") }
-                    if (customPrompt.isNotBlank()) {
-                        TextButton(onClick = {
-                            promptDraft = ""
-                            viewModel.setCustomSummaryPrompt("")
-                        }) { Text("Reset to default", color = c.textSecondary) }
-                    }
-                }
-                if (customPrompt.isNotBlank()) {
-                    Text(
-                        "Custom prompt active",
-                        style = MaterialTheme.typography.labelSmall, color = AccentTeal,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
-            }
-        }
-
-        Divider(c)
-
-        // ── AI Memory ───────────────────────────────────────────────────────
-        SectionHeader("AI Memory", c)
+        Spacer(Modifier.height(16.dp))
         Text(
-            "The Chat AI remembers facts stored here. Write anything you want it to know about you, " +
-            "your preferences, or your work. This context is included in every chat session.",
+            "Custom focus hint (optional)",
+            style = MaterialTheme.typography.labelMedium, color = c.textPrimary
+        )
+        Text(
+            "Describe what to emphasise (e.g. \"technical details\" or \"business impact\"). " +
+            "Leave blank for balanced extraction.",
             style = MaterialTheme.typography.bodySmall, color = c.textSecondary
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // Read memory directly from file for the settings view
-        val memCtx = androidx.compose.ui.platform.LocalContext.current
-        var memoryDraft by remember {
-            val f = memCtx.filesDir.resolve("user_memory.txt")
-            mutableStateOf(if (f.exists()) f.readText() else "")
-        }
-
+        var promptDraft by remember(customPrompt) { mutableStateOf(customPrompt) }
         OutlinedTextField(
-            value = memoryDraft,
-            onValueChange = { memoryDraft = it },
+            value = promptDraft,
+            onValueChange = { promptDraft = it },
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text(
-                    "e.g. I'm a software engineer interested in AI, productivity, and startups. " +
-                    "I prefer concise technical summaries.",
-                    style = MaterialTheme.typography.bodySmall, color = c.textDisabled
+                    "e.g. Focus on key takeaways and practical steps.",
+                    style = MaterialTheme.typography.bodySmall, color = c.textSecondary
                 )
             },
             colors = OutlinedTextFieldDefaults.colors(
@@ -350,57 +217,48 @@ fun SettingsScreen(
                 cursorColor = AccentTeal
             ),
             shape = RoundedCornerShape(10.dp),
-            minLines = 4, maxLines = 8
+            minLines = 2, maxLines = 4
         )
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
-                onClick = {
-                    try { memCtx.filesDir.resolve("user_memory.txt").writeText(memoryDraft) }
-                    catch (_: Exception) { }
-                },
+                onClick = { viewModel.setCustomSummaryPrompt(promptDraft) },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
-            ) { Text("Save memory") }
-            if (memoryDraft.isNotBlank()) {
+                border = BorderStroke(1.dp, AccentTeal)
+            ) { Text("Save") }
+            if (customPrompt.isNotBlank()) {
                 TextButton(onClick = {
-                    memoryDraft = ""
-                    try { memCtx.filesDir.resolve("user_memory.txt").delete() }
-                    catch (_: Exception) { }
-                }) { Text("Clear", color = c.textSecondary) }
+                    promptDraft = ""
+                    viewModel.setCustomSummaryPrompt("")
+                }) { Text("Reset", color = c.textSecondary) }
             }
         }
 
-        Divider(c)
+        SettingsDivider(c)
 
         // ── Backup & Restore ────────────────────────────────────────────────
         SectionHeader("Backup & Restore", c)
         Text(
-            "Export your links as JSON. Save to Google Drive or local storage. Import to restore.",
+            "Export your links as JSON to save or move them.",
             style = MaterialTheme.typography.bodySmall, color = c.textSecondary
         )
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
-                onClick = { exportLauncher.launch("zendeck_backup.json") },
+                onClick = { exportLauncher.launch("pockets_backup.json") },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
+                border = BorderStroke(1.dp, AccentTeal)
             ) { Text("Export") }
             OutlinedButton(
                 onClick = { importBackupLauncher.launch(arrayOf("application/json")) },
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = c.textSecondary),
-                border = androidx.compose.foundation.BorderStroke(1.dp, c.cardBorder)
+                border = BorderStroke(1.dp, c.cardBorder)
             ) { Text("Import") }
         }
-        Text(
-            "Tip: Android automatically backs up your data to Google Drive. Reinstalling restores your links.",
-            style = MaterialTheme.typography.labelSmall, color = c.textDisabled,
-            modifier = Modifier.padding(top = 8.dp)
-        )
 
-        Divider(c)
+        SettingsDivider(c)
 
         // ── LAN Access ──────────────────────────────────────────────────────
         SectionHeader("LAN Access", c)
@@ -424,42 +282,121 @@ fun SettingsScreen(
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = AccentTeal.copy(alpha = 0.12f),
-                    modifier = Modifier.fillMaxWidth().clickable { clipboard.setText(AnnotatedString(url)) }
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { clipboard.setText(AnnotatedString(url)) }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(url, style = MaterialTheme.typography.bodyMedium, color = AccentTeal, modifier = Modifier.weight(1f))
-                        Text("Copy", style = MaterialTheme.typography.labelSmall, color = AccentTeal.copy(alpha = 0.7f))
+                        Text(
+                            url,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = AccentTeal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text("Copy", style = MaterialTheme.typography.labelSmall,
+                            color = AccentTeal.copy(alpha = 0.7f))
                     }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Tap to copy · Open on your laptop browser · Refresh auto-updates every 30s",
+                    "Tap to copy · Open on your laptop browser",
                     style = MaterialTheme.typography.labelSmall, color = c.textDisabled
                 )
             } else {
-                Text("No WiFi detected. Connect to WiFi for LAN access.",
-                    style = MaterialTheme.typography.bodySmall, color = UrgencyWarning)
+                Text(
+                    "No WiFi detected. Connect to WiFi for LAN access.",
+                    style = MaterialTheme.typography.bodySmall, color = UrgencyWarning
+                )
             }
         }
 
-        Divider(c)
+        SettingsDivider(c)
 
-        // ── App info ────────────────────────────────────────────────────────
-        Text("AI Link Triage v1.0", style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
-        Text("All data stored locally. No tracking, no cloud AI, no ads.",
-            style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
-        Spacer(Modifier.height(4.dp))
+        // ── AI Model ────────────────────────────────────────────────────────
+        SectionHeader("Chat AI Model", c)
         Text(
-            "Cards: tap to expand · tap again to collapse · double-tap to open · long-press for actions",
+            "The Chat AI tab uses an on-device Gemma model (no internet required). " +
+            "Download the Gemma 4 2B .litertlm file from Hugging Face, then import it here.",
+            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
+        )
+        Spacer(Modifier.height(12.dp))
+
+        val isImporting = modelImportStatus is SettingsViewModel.ModelImportStatus.Copying
+        if (isImporting) {
+            val copying = modelImportStatus as SettingsViewModel.ModelImportStatus.Copying
+            Row(verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = AccentTeal
+                )
+                Text(
+                    "Importing ${copying.fileName}…",
+                    style = MaterialTheme.typography.bodySmall, color = c.textSecondary
+                )
+            }
+        } else {
+            if (activeModelName != null) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = AccentTeal.copy(alpha = 0.10f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, tint = AccentTeal,
+                            modifier = Modifier.size(18.dp))
+                        Text(
+                            activeModelName!!.removeSuffix(".litertlm"),
+                            style = MaterialTheme.typography.bodySmall, color = AccentTeal,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            OutlinedButton(
+                onClick = { modelImportLauncher.launch(arrayOf("*/*")) },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
+                border = BorderStroke(1.dp, AccentTeal)
+            ) {
+                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (activeModelName != null) "Replace model file" else "Import .litertlm model")
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Model file: google/gemma-4-on-device on Hugging Face → gemma-4-E2B-it.litertlm",
             style = MaterialTheme.typography.labelSmall, color = c.textDisabled
         )
+
+        SettingsDivider(c)
+
+        // ── About ───────────────────────────────────────────────────────────
+        Text("Pockets v1.0", style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
+        Text(
+            "All data stored locally on your device. No tracking, no cloud sync, no ads.",
+            style = MaterialTheme.typography.labelSmall, color = c.textDisabled
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Tap to expand · tap again to collapse · double-tap to open · long-press for actions",
+            style = MaterialTheme.typography.labelSmall, color = c.textDisabled
+        )
+        Spacer(Modifier.height(32.dp))
     }
+    } // end Scaffold
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+// ── Private helpers ───────────────────────────────────────────────────────────
 
 @Composable
 private fun SectionHeader(title: String, c: ZenDeckColors) {
@@ -467,7 +404,7 @@ private fun SectionHeader(title: String, c: ZenDeckColors) {
 }
 
 @Composable
-private fun Divider(c: ZenDeckColors) {
+private fun SettingsDivider(c: ZenDeckColors) {
     HorizontalDivider(color = c.divider, modifier = Modifier.padding(vertical = 16.dp))
 }
 
@@ -475,14 +412,16 @@ private fun Divider(c: ZenDeckColors) {
 private fun ToggleRow(
     label: String,
     checked: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     onToggle: (Boolean) -> Unit,
     c: ZenDeckColors
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = if (checked) AccentTeal else c.textSecondary, modifier = Modifier.size(20.dp))
+        Icon(icon, null, tint = if (checked) AccentTeal else c.textSecondary,
+            modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = c.textPrimary, modifier = Modifier.weight(1f))
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = c.textPrimary,
+            modifier = Modifier.weight(1f))
         Switch(
             checked = checked,
             onCheckedChange = onToggle,

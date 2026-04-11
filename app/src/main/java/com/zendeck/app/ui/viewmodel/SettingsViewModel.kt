@@ -36,15 +36,67 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val repo = LinkRepository.getInstance(application)
 
     companion object {
-        val KEY_TTL_HOURS            = longPreferencesKey("ttl_hours")
-        val KEY_DARK_MODE            = booleanPreferencesKey("dark_mode")
-        val KEY_AI_SUMMARIES         = booleanPreferencesKey("ai_summaries_enabled")
-        val KEY_CUSTOM_PROMPT        = stringPreferencesKey("custom_summary_prompt")
-        val KEY_SELECTED_MODEL_PATH  = stringPreferencesKey("selected_model_path")
-        val KEY_FONT_SCALE           = floatPreferencesKey("font_scale")
-        val TTL_OPTIONS              = listOf(24L, 48L, 72L, 168L)
-        private const val TAG = "SettingsViewModel"
+        val KEY_TTL_HOURS          = longPreferencesKey("ttl_hours")
+        val KEY_DARK_MODE          = booleanPreferencesKey("dark_mode")
+        val KEY_CUSTOM_PROMPT      = stringPreferencesKey("custom_summary_prompt")
+        val KEY_FONT_SCALE         = floatPreferencesKey("font_scale")
+        val KEY_SELECTED_MODEL_PATH = stringPreferencesKey("selected_model_path")
+        val TTL_OPTIONS            = listOf(24L, 48L, 72L, 168L)
+        private const val TAG      = "SettingsViewModel"
     }
+
+    // ── AI Model ──────────────────────────────────────────────────────────────
+
+    sealed class ModelImportStatus {
+        object Idle : ModelImportStatus()
+        data class Copying(val fileName: String) : ModelImportStatus()
+        data class Done(val fileName: String) : ModelImportStatus()
+        data class Failed(val error: String) : ModelImportStatus()
+    }
+
+    private val _activeModelName = MutableStateFlow<String?>(
+        LlmSummarizationService.getActiveModelName(application)
+    )
+    val activeModelName: StateFlow<String?> = _activeModelName.asStateFlow()
+
+    private val _modelImportStatus = MutableStateFlow<ModelImportStatus>(ModelImportStatus.Idle)
+    val modelImportStatus: StateFlow<ModelImportStatus> = _modelImportStatus.asStateFlow()
+
+    fun refreshModelState() {
+        _activeModelName.value = LlmSummarizationService.getActiveModelName(getApplication())
+    }
+
+    fun importModelFile(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
+        val app = getApplication<Application>()
+        val fileName = app.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) c.getString(idx) else null
+            } else null
+        } ?: "gemma-4-E2B-it.litertlm"
+
+        _modelImportStatus.value = ModelImportStatus.Copying(fileName)
+        try {
+            val modelsDir = app.getExternalFilesDir("models")
+                ?: app.filesDir.resolve("models").also { it.mkdirs() }
+            modelsDir.mkdirs()
+            val dest = File(modelsDir, fileName)
+            app.contentResolver.openInputStream(uri)?.use { i ->
+                dest.outputStream().use { o -> i.copyTo(o) }
+            }
+            Log.i(TAG, "Model imported → ${dest.absolutePath}")
+            dataStore.edit { prefs ->
+                prefs[KEY_SELECTED_MODEL_PATH] = dest.absolutePath
+            }
+            _modelImportStatus.value = ModelImportStatus.Done(fileName)
+            refreshModelState()
+        } catch (e: Exception) {
+            Log.e(TAG, "Model import failed: ${e.message}")
+            _modelImportStatus.value = ModelImportStatus.Failed(e.message ?: "Unknown error")
+        }
+    }
+
+    fun clearModelImportStatus() { _modelImportStatus.value = ModelImportStatus.Idle }
 
     // ── LAN Server ────────────────────────────────────────────────────────────
 
@@ -86,84 +138,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         dataStore.edit { prefs -> prefs[KEY_FONT_SCALE] = scale }
     }
 
-    // ── AI Settings ───────────────────────────────────────────────────────────
+    // ── Summary prompt ────────────────────────────────────────────────────────
 
-    /** Whether to run AI summarisation when links are saved (default on). */
-    val aiSummariesEnabled: StateFlow<Boolean> = dataStore.data
-        .map { prefs -> prefs[KEY_AI_SUMMARIES] ?: true }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
-
-    /** User-provided summarisation prompt; empty = use the built-in prompt. */
+    /** Optional custom prompt hint for the summariser (not used by SummaryEngine, reserved for future). */
     val customSummaryPrompt: StateFlow<String> = dataStore.data
         .map { prefs -> prefs[KEY_CUSTOM_PROMPT] ?: "" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
 
-    fun setAiSummariesEnabled(enabled: Boolean) = viewModelScope.launch {
-        dataStore.edit { prefs -> prefs[KEY_AI_SUMMARIES] = enabled }
-    }
-
     fun setCustomSummaryPrompt(prompt: String) = viewModelScope.launch {
         dataStore.edit { prefs -> prefs[KEY_CUSTOM_PROMPT] = prompt }
     }
-
-    private val _activeModelName = MutableStateFlow(LlmSummarizationService.getActiveModelName(getApplication()))
-    /** Reactive filename of the highest-priority model on disk; updates after successful import. */
-    val activeModelNameState: StateFlow<String?> = _activeModelName.asStateFlow()
-
-    // Keep the simple accessor for callers that just need a one-shot read
-    fun getActiveModelName(): String? = _activeModelName.value
-
-    /** Creates /storage/emulated/0/Download/gemma/ for new users to drop model files into. */
-    fun createModelFolder() = viewModelScope.launch(Dispatchers.IO) {
-        try { File("/storage/emulated/0/Download/gemma").mkdirs() }
-        catch (e: Exception) { Log.w(TAG, "Could not create model folder: ${e.message}") }
-    }
-
-    // ── Model import via SAF ──────────────────────────────────────────────────
-
-    sealed class ImportStatus {
-        object Idle                              : ImportStatus()
-        data class Copying(val fileName: String) : ImportStatus()
-        data class Done(val fileName: String)    : ImportStatus()
-        data class Failed(val error: String)     : ImportStatus()
-    }
-
-    private val _importStatus = MutableStateFlow<ImportStatus>(ImportStatus.Idle)
-    val importStatus: StateFlow<ImportStatus> = _importStatus.asStateFlow()
-
-    /**
-     * Copies a SAF-picked .bin file to the app's private external models dir.
-     * That path is always accessible without MANAGE_EXTERNAL_STORAGE, so the
-     * model loads on all Android versions after the one-time copy.
-     */
-    fun importModelFile(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
-        val app = getApplication<Application>()
-        val fileName = app.contentResolver.query(uri, null, null, null, null)?.use { c ->
-            if (c.moveToFirst()) {
-                val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (idx >= 0) c.getString(idx) else null
-            } else null
-        } ?: "gemma_model.bin"
-
-        _importStatus.value = ImportStatus.Copying(fileName)
-        try {
-            val modelsDir = app.getExternalFilesDir("models") ?: app.filesDir.resolve("models")
-            modelsDir.mkdirs()
-            val dest = File(modelsDir, fileName)
-            app.contentResolver.openInputStream(uri)?.use { i ->
-                dest.outputStream().use { o -> i.copyTo(o) }
-            }
-            Log.i(TAG, "Model imported → ${dest.absolutePath}")
-            _importStatus.value = ImportStatus.Done(fileName)
-            _activeModelName.value = LlmSummarizationService.getActiveModelName(getApplication())
-            dataStore.edit { prefs -> prefs[KEY_SELECTED_MODEL_PATH] = dest.absolutePath }
-        } catch (e: Exception) {
-            Log.e(TAG, "Model import failed: ${e.message}")
-            _importStatus.value = ImportStatus.Failed(e.message ?: "Unknown error")
-        }
-    }
-
-    fun clearImportStatus() { _importStatus.value = ImportStatus.Idle }
 
     // ── Backup & Restore ──────────────────────────────────────────────────────
 
