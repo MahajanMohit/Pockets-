@@ -42,18 +42,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeModelName = MutableStateFlow<String?>(null)
     val activeModelName: StateFlow<String?> = _activeModelName.asStateFlow()
 
-    // ── Model discovery & selection ───────────────────────────────────────────
-
-    private val _discoveredModels = MutableStateFlow<List<LlmSummarizationService.ModelInfo>>(emptyList())
-    val discoveredModels: StateFlow<List<LlmSummarizationService.ModelInfo>> = _discoveredModels.asStateFlow()
-
-    private val _selectedModel = MutableStateFlow<LlmSummarizationService.ModelInfo?>(null)
-    val selectedModel: StateFlow<LlmSummarizationService.ModelInfo?> = _selectedModel.asStateFlow()
-
     private val _selectedImageUri = MutableStateFlow<Uri?>(null)
     val selectedImageUri: StateFlow<Uri?> = _selectedImageUri.asStateFlow()
-
-    // ── Import status ─────────────────────────────────────────────────────────
 
     sealed class ImportStatus {
         object Idle                              : ImportStatus()
@@ -61,21 +51,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         data class Done(val fileName: String)    : ImportStatus()
         data class Failed(val error: String)     : ImportStatus()
     }
-
     private val _importStatus = MutableStateFlow<ImportStatus>(ImportStatus.Idle)
     val importStatus: StateFlow<ImportStatus> = _importStatus.asStateFlow()
 
-    // ── Article context ───────────────────────────────────────────────────────
-
     private val _articleContext = MutableStateFlow("")
     val articleContext: StateFlow<String> = _articleContext.asStateFlow()
-
-    // ── Active backend (GPU / CPU) ─────────────────────────────────────────────
-
-    private val _activeBackend = MutableStateFlow("CPU")
-    val activeBackend: StateFlow<String> = _activeBackend.asStateFlow()
-
-    // ── User memory file ──────────────────────────────────────────────────────
 
     private val _userMemory = MutableStateFlow("")
     val userMemory: StateFlow<String> = _userMemory.asStateFlow()
@@ -83,13 +63,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             val prefs = dataStore.data.first()
-            // Restore persisted model selection
             val savedPath = prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH]
             if (savedPath != null) llmService.setPreferredModelPath(savedPath)
-            // Restore GPU preference
-            val preferGpu = prefs[SettingsViewModel.KEY_PREFER_GPU] ?: true
-            llmService.setPreferGpu(preferGpu)
-            refreshModels()
+            refreshModelState()
             loadArticleContext()
             loadMemory()
         }
@@ -100,74 +76,67 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun loadMemory() {
         try {
             _userMemory.value = if (memoryFile.exists()) memoryFile.readText().trim() else ""
-        } catch (_: Exception) { }
+        } catch (_: Exception) {}
         rebuildChatSession()
     }
 
-    /** Overwrites the memory file and restarts the chat session with updated context. */
     fun updateMemory(content: String) = viewModelScope.launch(Dispatchers.IO) {
         try {
             memoryFile.writeText(content)
             _userMemory.value = content
             rebuildChatSession()
-        } catch (_: Exception) { }
+        } catch (_: Exception) {}
     }
 
     private fun rebuildChatSession() {
-        val systemPrompt = buildSystemPrompt(
-            articleContext = _articleContext.value,
-            memory = _userMemory.value
-        )
+        val systemPrompt = buildSystemPrompt(_articleContext.value, _userMemory.value)
         llmService.resetChatSession(systemPrompt)
+        // Reset to greeting whenever session rebuilds
+        _messages.value = listOf(buildGreeting(_userMemory.value))
     }
 
-    private fun buildSystemPrompt(articleContext: String, memory: String): String {
-        return buildString {
-            append("You are the user's personal reading assistant and AI helper.\n")
-            if (memory.isNotBlank()) {
-                append("\nUser profile / memory:\n$memory\n")
-                append("Use this context to personalise your responses.\n")
-            }
-            if (articleContext.isNotBlank()) {
-                append("\nUser's current saved reading list:\n$articleContext\n")
-                append("\nHelp with their reading list, discuss articles, or assist with any topic.")
-            } else {
-                append("\nBe helpful, concise, and direct.")
-            }
+    private fun buildSystemPrompt(articleContext: String, memory: String): String = buildString {
+        append("You are a personal AI assistant. Be helpful, concise, and direct.\n")
+        if (memory.isNotBlank()) {
+            append("\nUser profile (remember this across the conversation):\n$memory\n")
         }
+        if (articleContext.isNotBlank()) {
+            append("\nUser's current saved reading list (refer to these when relevant):\n$articleContext\n")
+        }
+    }
+
+    private fun buildGreeting(memory: String): ChatMessage {
+        val name = extractName(memory)
+        val greeting = if (name != null) {
+            "Hey $name! I'm your personal assistant. I have access to your reading list and I remember what you've told me about yourself. What's on your mind?"
+        } else {
+            "Hey! I'm your personal assistant. I have access to your saved reading list and I remember our conversations. How can I help you today?"
+        }
+        return ChatMessage(greeting, isUser = false)
+    }
+
+    private fun extractName(memory: String): String? {
+        val patterns = listOf(
+            Regex("""(?i)my name is ([A-Z][a-z]+)"""),
+            Regex("""(?i)I(?:'m| am) ([A-Z][a-z]+)"""),
+            Regex("""(?i)call me ([A-Z][a-z]+)""")
+        )
+        for (p in patterns) {
+            val match = p.find(memory) ?: continue
+            val name = match.groupValues[1]
+            if (name.length in 2..20) return name
+        }
+        return null
     }
 
     // ── Model management ──────────────────────────────────────────────────────
 
-    fun refreshModels() {
-        val models = LlmSummarizationService.discoverModels(getApplication())
-        _discoveredModels.value = models
-
-        val currentPath = _selectedModel.value?.path
-        val stillValid = models.any { it.path == currentPath }
-        if (!stillValid) {
-            val first = models.firstOrNull()
-            _selectedModel.value = first
-            first?.let { llmService.setPreferredModelPath(it.path) }
-        }
-        refreshModelState()
-    }
-
-    fun selectModel(model: LlmSummarizationService.ModelInfo) {
-        if (_selectedModel.value?.path == model.path) return
-        _selectedModel.value = model
-        llmService.setPreferredModelPath(model.path)
-        refreshModelState()
-        viewModelScope.launch {
-            dataStore.edit { prefs -> prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH] = model.path }
-        }
-    }
+    fun refreshModels() = refreshModelState()
 
     fun refreshModelState() {
         val name = LlmSummarizationService.getActiveModelName(getApplication())
-        _activeModelName.value = _selectedModel.value?.name ?: name
-        _modelAvailable.value = _selectedModel.value != null || name != null
-        _activeBackend.value = llmService.getActiveBackend()
+        _activeModelName.value = name
+        _modelAvailable.value = name != null
     }
 
     fun importModel(uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
@@ -177,7 +146,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (idx >= 0) c.getString(idx) else null
             } else null
-        } ?: "gemma_model.bin"
+        } ?: "gemma-4-E2B-it.litertlm"
 
         _importStatus.value = ImportStatus.Copying(fileName)
         try {
@@ -187,10 +156,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             app.contentResolver.openInputStream(uri)?.use { i ->
                 dest.outputStream().use { o -> i.copyTo(o) }
             }
-            Log.i(TAG, "Model imported via Chat → ${dest.absolutePath}")
             _importStatus.value = ImportStatus.Done(fileName)
             dataStore.edit { prefs -> prefs[SettingsViewModel.KEY_SELECTED_MODEL_PATH] = dest.absolutePath }
-            refreshModels()
+            llmService.setPreferredModelPath(dest.absolutePath)
+            refreshModelState()
         } catch (e: Exception) {
             Log.e(TAG, "Model import failed: ${e.message}")
             _importStatus.value = ImportStatus.Failed(e.message ?: "Unknown error")
@@ -219,11 +188,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSelectedImage(uri: Uri?) {
         if (uri != null) {
-            // Take persistable read permission so the URI remains accessible
             try {
                 getApplication<Application>().contentResolver
                     .takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (_: SecurityException) { }
+            } catch (_: SecurityException) {}
         }
         _selectedImageUri.value = uri
     }
@@ -240,36 +208,28 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val imageUri = _selectedImageUri.value
         _selectedImageUri.value = null
 
-        // Show user bubble immediately (indicate if image is attached)
-        val displayText = if (imageUri != null) "📷 [Image]\n$trimmed" else trimmed
+        val displayText = if (imageUri != null) "📷 $trimmed" else trimmed
         _messages.value = _messages.value + ChatMessage(displayText, isUser = true)
         _isLoading.value = true
 
         viewModelScope.launch(Dispatchers.IO) {
-            // 1. OCR the attached image if present
             var imageOcrText = ""
             if (imageUri != null) {
                 try {
-                    val tempFile = ImageAnalysisService.copyAndCompress(
-                        getApplication(), imageUri
-                    )
+                    val tempFile = ImageAnalysisService.copyAndCompress(getApplication(), imageUri)
                     if (tempFile != null) {
                         imageOcrText = ImageAnalysisService.extractText(tempFile.absolutePath)
-                        tempFile.delete() // free temp space
+                        tempFile.delete()
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Image OCR failed: ${e.message}")
                 }
             }
 
-            // 2. Build the full turn content (OCR text prepended if available)
             val fullContent = if (imageOcrText.isNotBlank()) {
-                "Image content (extracted via OCR):\n$imageOcrText\n\nUser message: $trimmed"
-            } else {
-                trimmed
-            }
+                "Image content (via OCR):\n$imageOcrText\n\nUser: $trimmed"
+            } else trimmed
 
-            // 3. Send to the persistent multi-turn session
             val reply = llmService.chatTurn(fullContent)
 
             withContext(Dispatchers.Main) {

@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,7 +41,6 @@ fun SettingsScreen(
     val aiEnabled       by viewModel.aiSummariesEnabled.collectAsStateWithLifecycle()
     val customPrompt    by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
     val importStatus    by viewModel.importStatus.collectAsStateWithLifecycle()
-    val preferGpu       by viewModel.preferGpu.collectAsStateWithLifecycle()
     val c               = LocalZenDeckColors.current
     val clipboard       = LocalClipboardManager.current
 
@@ -171,13 +171,7 @@ fun SettingsScreen(
         // ── AI Model ────────────────────────────────────────────────────────
         SectionHeader("AI Model", c)
 
-        // Active model indicator
-        val modelLabel = when {
-            importStatus is SettingsViewModel.ImportStatus.Copying ->
-                "Copying ${(importStatus as SettingsViewModel.ImportStatus.Copying).fileName}…"
-            activeModelName != null -> "Active: $activeModelName"
-            else -> "No model found"
-        }
+        // Active model status
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Default.Memory, null,
@@ -185,38 +179,39 @@ fun SettingsScreen(
                 modifier = Modifier.size(16.dp)
             )
             Spacer(Modifier.width(6.dp))
+            val modelLabel = when {
+                importStatus is SettingsViewModel.ImportStatus.Copying ->
+                    "Copying ${(importStatus as SettingsViewModel.ImportStatus.Copying).fileName}…"
+                activeModelName != null -> activeModelName!!.removeSuffix(".litertlm") + " · GPU auto-detected"
+                else -> "No model — download and import below"
+            }
             Text(modelLabel, style = MaterialTheme.typography.bodySmall,
                 color = if (activeModelName != null) AccentTeal else c.textSecondary)
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(14.dp))
 
-        ToggleRow(
-            label = "GPU acceleration",
-            checked = preferGpu,
-            icon = Icons.Default.Speed,
-            onToggle = { viewModel.setPreferGpu(it) },
-            c = c
-        )
-        Text(
-            "Uses the Adreno/Mali GPU for faster inference. Falls back to CPU automatically if the GPU doesn't support the model.",
-            style = MaterialTheme.typography.bodySmall, color = c.textSecondary,
-            modifier = Modifier.padding(start = 32.dp, top = 2.dp)
-        )
+        // Download instructions
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(c.surface)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text("How to get the model", style = MaterialTheme.typography.labelMedium, color = c.textPrimary)
+            Spacer(Modifier.height(2.dp))
+            Text("1. Search HuggingFace for:", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            Text("   gemma-4-E2B-it.litertlm", style = MaterialTheme.typography.bodySmall, color = AccentTeal,
+                fontWeight = FontWeight.Medium)
+            Text("   (Model: google/gemma-4-on-device — ~2.6 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            Text("2. Save the file to Downloads/ or pick it with the button below.", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            Text("3. GPU is used automatically when available. No toggle needed.", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+        }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
-        // Import model via SAF (no All Files permission needed)
-        Text(
-            "Import via file picker (recommended)",
-            style = MaterialTheme.typography.labelMedium, color = c.textPrimary
-        )
-        Text(
-            "Picks the .bin file from anywhere on your device and copies it into the app's " +
-            "private storage — no special permissions required.",
-            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-        )
-        Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = { importModelLauncher.launch(arrayOf("*/*")) },
             colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
@@ -225,69 +220,20 @@ fun SettingsScreen(
         ) {
             Icon(Icons.Default.FileOpen, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text(if (importStatus is SettingsViewModel.ImportStatus.Copying) "Copying…" else "Import model file")
+            Text(if (importStatus is SettingsViewModel.ImportStatus.Copying) "Copying…" else "Import model file (.litertlm)")
         }
 
-        // Import status feedback
         AnimatedVisibility(importStatus is SettingsViewModel.ImportStatus.Done) {
-            Text(
-                "✓ Model imported successfully. Send a message in Chat AI to test it.",
+            Text("Model imported. Open the Assistant tab to start chatting.",
                 style = MaterialTheme.typography.bodySmall, color = AccentTeal,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+                modifier = Modifier.padding(top = 4.dp))
         }
         AnimatedVisibility(importStatus is SettingsViewModel.ImportStatus.Failed) {
-            Text(
-                "Import failed: ${(importStatus as? SettingsViewModel.ImportStatus.Failed)?.error}",
+            Text("Import failed: ${(importStatus as? SettingsViewModel.ImportStatus.Failed)?.error}",
                 style = MaterialTheme.typography.bodySmall, color = UrgencyWarning,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+                modifier = Modifier.padding(top = 4.dp))
         }
 
-        Spacer(Modifier.height(14.dp))
-
-        // Manual folder instructions (expandable)
-        var showInstructions by remember { mutableStateOf(false) }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showInstructions = !showInstructions }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Manual setup instructions",
-                style = MaterialTheme.typography.labelMedium, color = c.textSecondary
-            )
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                if (showInstructions) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                null, tint = c.textSecondary, modifier = Modifier.size(16.dp)
-            )
-        }
-        AnimatedVisibility(showInstructions) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(c.surface)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text("1. The app has created a folder for you:", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
-                Text("   /storage/emulated/0/Download/gemma/", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
-                Text("2. Download one of these model files into that folder:", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
-                Text("   • gemma-4-E2B-it.litertlm      (recommended, ~2.6 GB)", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
-                Text("   • gemma-4-E4B-it.litertlm      (best quality, ~4.3 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                Text("   • gemma-3-1b-it-cpu-int4.bin   (lightweight legacy, ~0.8 GB)", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                Text("3. OR use the 'Import model file' button above to pick the file directly — no folder needed.", style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
-                Text("4. On Android 11+ you may need to grant 'All files access' in:\n   Settings → Apps → AI Link Triage → Permissions", style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                Spacer(Modifier.height(4.dp))
-                Text("After setup go to Chat AI tab and type anything to verify.", style = MaterialTheme.typography.bodySmall, color = AccentTeal)
-            }
-        }
-
-        // Create the Download/gemma folder proactively
         LaunchedEffect(Unit) { viewModel.createModelFolder() }
 
         Divider(c)

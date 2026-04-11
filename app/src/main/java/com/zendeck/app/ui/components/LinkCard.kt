@@ -235,8 +235,8 @@ fun LinkCard(
                         )
                     }
 
-                    // ── Summary status chip (image/text only) ─────────────────
-                    if (link.contentType != "link") {
+                    // ── Summary status (all types: show while pending or unavailable) ──
+                    if (link.summaryStatus == "pending" || link.summaryStatus == "unavailable") {
                         Spacer(Modifier.height(6.dp))
                         SummaryStatusChip(link.summaryStatus)
                     }
@@ -387,16 +387,17 @@ private fun SummaryStatusChip(status: String) {
         "pending" -> {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
                 modifier = Modifier.padding(vertical = 2.dp)
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(11.dp),
+                    modifier = Modifier.size(14.dp),
                     color = AccentTeal,
-                    strokeWidth = 1.5.dp
+                    strokeWidth = 2.dp,
+                    trackColor = AccentTeal.copy(alpha = 0.15f)
                 )
                 Text(
-                    text = "Generating summary…",
+                    text = "Summarising…",
                     style = MaterialTheme.typography.labelSmall,
                     color = AccentTeal
                 )

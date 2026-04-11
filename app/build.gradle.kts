@@ -88,8 +88,7 @@ android {
 }
 
 // Kotlin 2.0 merged kotlin-stdlib-jdk7/jdk8 into kotlin-stdlib.
-// Older transitive deps (e.g. mediapipe) still pull in the pre-2.0 artifacts,
-// causing "Platform declaration clash" for BigDecimal/BigInteger operators.
+// Some transitive deps still pull in the pre-2.0 artifacts, causing clashes.
 // Substitute both jdk7/jdk8 with kotlin-stdlib itself so they never land
 // on the compile classpath.
 configurations.all {
@@ -139,13 +138,6 @@ dependencies {
 
     // LiteRT-LM — Gemma 4 E2B / E4B inference (.litertlm files)
     implementation(libs.litertlm.android)
-
-    // MediaPipe LLM Inference — legacy fallback for older Gemma .bin/.task files
-    implementation(libs.mediapipe.tasks.genai) {
-        // mediapipe pulls in pre-2.0 kotlin-stdlib-jdk8 which clashes with kotlin-stdlib 2.0
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
-    }
 
     // Chrome Custom Tabs
     implementation(libs.androidx.browser)
