@@ -1,8 +1,15 @@
 package com.zendeck.app.domain.model
 
+import androidx.compose.runtime.Immutable
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
+/**
+ * [Immutable] lets Compose treat this class as stable (the `tags` List would
+ * otherwise mark it unstable), so LinkCards skip recomposition during scroll
+ * unless their own item actually changed.
+ */
+@Immutable
 @Serializable
 data class LinkItem(
     val id: String,

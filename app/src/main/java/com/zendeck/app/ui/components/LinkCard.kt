@@ -1,7 +1,6 @@
 package com.zendeck.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -24,7 +23,7 @@ import androidx.compose.material.icons.outlined.TextSnippet
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,17 +55,14 @@ fun LinkCard(
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val c = LocalZenDeckColors.current
-    val latestOnTap = remember { androidx.compose.runtime.mutableStateOf(onTap) }
-    val latestOnDoubleTap = remember { androidx.compose.runtime.mutableStateOf(onDoubleTap) }
-    val latestOnLongPress = remember { androidx.compose.runtime.mutableStateOf(onLongPress) }
-    latestOnTap.value = onTap
-    latestOnDoubleTap.value = onDoubleTap
-    latestOnLongPress.value = onLongPress
-    val urgencyColor by animateColorAsState(
-        targetValue = urgencyBorderColor(link.urgencyFraction),
-        animationSpec = tween(durationMillis = 800),
-        label = "urgency_color"
-    )
+    // rememberUpdatedState: pointerInput(Unit) never restarts, so it must read
+    // the latest lambdas without state writes during composition
+    val currentOnTap by rememberUpdatedState(onTap)
+    val currentOnDoubleTap by rememberUpdatedState(onDoubleTap)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
+    // Direct colour — urgency tier changes at most a few times a day; keeping a
+    // live animation object per visible card costs frames during scroll
+    val urgencyColor = urgencyBorderColor(link.urgencyFraction)
 
     val isTextCard = link.contentType == "text"
     val hasImage = link.contentType == "image" && link.localImagePath.isNotBlank()
@@ -94,11 +90,11 @@ fun LinkCard(
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { latestOnTap.value() },
-                        onDoubleTap = { latestOnDoubleTap.value() },
+                        onTap = { currentOnTap() },
+                        onDoubleTap = { currentOnDoubleTap() },
                         onLongPress = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            latestOnLongPress.value()
+                            currentOnLongPress()
                         }
                     )
                 },
@@ -181,7 +177,11 @@ fun LinkCard(
                             )
                         } else {
                             AsyncImage(
-                                model = link.faviconUrl,
+                                // Decode at display size — favicons/ICOs can be 256px+
+                                model = ImageRequest.Builder(context)
+                                    .data(link.faviconUrl)
+                                    .size(48)
+                                    .build(),
                                 contentDescription = null,
                                 modifier = Modifier.size(16.dp).clip(CircleShape),
                                 contentScale = ContentScale.Fit

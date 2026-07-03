@@ -65,23 +65,28 @@ object LinkScraperService {
                 .followRedirects(true)
                 .get()
 
+            // Trust the URL we actually landed on: if the shared link was a
+            // redirector we didn't recognise, doc.location() is the real site.
+            val finalDomain = extractDomain(doc.location().ifBlank { url })
+                .ifBlank { domain }
+
             // Other known JS-heavy domains — Jsoup only gets homepage boilerplate, skip body
-            if (KNOWN_JS_DOMAINS.any { domain == it || domain.endsWith(".$it") }) {
+            if (KNOWN_JS_DOMAINS.any { finalDomain == it || finalDomain.endsWith(".$it") }) {
                 val title = doc.select("meta[property=og:title]").attr("content")
-                    .ifBlank { doc.title() }.ifBlank { domain }
+                    .ifBlank { doc.title() }.ifBlank { finalDomain }
                 val description = doc.select("meta[property=og:description]").attr("content")
                 return@withContext ScrapedContent(
                     title = title,
                     description = description,
                     bodyText = "",
-                    domain = domain,
-                    faviconUrl = "https://$domain/favicon.ico"
+                    domain = finalDomain,
+                    faviconUrl = "https://$finalDomain/favicon.ico"
                 )
             }
 
-            val title = doc.title().ifBlank {
-                doc.select("meta[property=og:title]").attr("content").ifBlank { domain }
-            }
+            val title = doc.select("meta[property=og:title]").attr("content").ifBlank {
+                doc.title()
+            }.ifBlank { finalDomain }
             val description = doc.select("meta[name=description]").attr("content").ifBlank {
                 doc.select("meta[property=og:description]").attr("content")
             }
@@ -91,14 +96,14 @@ object LinkScraperService {
             val faviconUrl = doc.select("link[rel~=(?i)icon]").firstOrNull()
                 ?.absUrl("href")
                 ?.ifBlank { null }
-                ?: "https://$domain/favicon.ico"
+                ?: "https://$finalDomain/favicon.ico"
 
             ScrapedContent(
                 title = title,
                 description = description,
                 // Return empty bodyText for JS-gated pages so no garbage summary is generated
                 bodyText = if (isJsGated(bodyText)) "" else bodyText,
-                domain = domain,
+                domain = finalDomain,
                 faviconUrl = faviconUrl
             )
         } catch (e: Exception) {

@@ -27,24 +27,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.server.ZenDeckNanoServer
 import com.zendeck.app.ui.theme.*
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
-import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel()
 ) {
-    val ttlHours         by viewModel.ttlHours.collectAsStateWithLifecycle()
-    val darkMode         by viewModel.darkMode.collectAsStateWithLifecycle()
-    val fontScale        by viewModel.fontScale.collectAsStateWithLifecycle()
-    val lanRunning       by viewModel.lanServerRunning.collectAsStateWithLifecycle()
-    val customPrompt     by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
-    val activeModelName  by viewModel.activeModelName.collectAsStateWithLifecycle()
-    val modelImportStatus by viewModel.modelImportStatus.collectAsStateWithLifecycle()
-    val c                = LocalZenDeckColors.current
-    val clipboard        = LocalClipboardManager.current
-    val snackbarState    = remember { SnackbarHostState() }
-    val scope            = rememberCoroutineScope()
+    val ttlHours     by viewModel.ttlHours.collectAsStateWithLifecycle()
+    val darkMode     by viewModel.darkMode.collectAsStateWithLifecycle()
+    val fontScale    by viewModel.fontScale.collectAsStateWithLifecycle()
+    val lanRunning   by viewModel.lanServerRunning.collectAsStateWithLifecycle()
+    val customPrompt by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
+    val c            = LocalZenDeckColors.current
+    val clipboard    = LocalClipboardManager.current
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -54,34 +49,8 @@ fun SettingsScreen(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { viewModel.importBackup(it) } }
 
-    val modelImportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri -> uri?.let { viewModel.importModelFile(it) } }
-
-    // Show snackbar when import completes
-    LaunchedEffect(modelImportStatus) {
-        when (val s = modelImportStatus) {
-            is SettingsViewModel.ModelImportStatus.Done -> {
-                scope.launch { snackbarState.showSnackbar("'${s.fileName}' imported successfully.") }
-                viewModel.clearModelImportStatus()
-            }
-            is SettingsViewModel.ModelImportStatus.Failed -> {
-                scope.launch { snackbarState.showSnackbar("Import failed: ${s.error}") }
-                viewModel.clearModelImportStatus()
-            }
-            else -> {}
-        }
-    }
-
-    Scaffold(
-        modifier = modifier,
-        containerColor = c.background,
-        snackbarHost = { SnackbarHost(snackbarState) }
-    ) { scaffoldPadding ->
-
     Column(
-        modifier = Modifier
-            .padding(scaffoldPadding)
+        modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp)
@@ -315,71 +284,6 @@ fun SettingsScreen(
 
         SettingsDivider(c)
 
-        // ── AI Model ────────────────────────────────────────────────────────
-        SectionHeader("Chat AI Model", c)
-        Text(
-            "The Chat AI tab uses an on-device Gemma model (no internet required). " +
-            "Download the Gemma 4 2B .litertlm file from Hugging Face, then import it here.",
-            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-        )
-        Spacer(Modifier.height(12.dp))
-
-        val isImporting = modelImportStatus is SettingsViewModel.ModelImportStatus.Copying
-        if (isImporting) {
-            val copying = modelImportStatus as SettingsViewModel.ModelImportStatus.Copying
-            Row(verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = AccentTeal
-                )
-                Text(
-                    "Importing ${copying.fileName}…",
-                    style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-                )
-            }
-        } else {
-            if (activeModelName != null) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = AccentTeal.copy(alpha = 0.10f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(Icons.Default.CheckCircle, null, tint = AccentTeal,
-                            modifier = Modifier.size(18.dp))
-                        Text(
-                            activeModelName!!.removeSuffix(".litertlm"),
-                            style = MaterialTheme.typography.bodySmall, color = AccentTeal,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-            OutlinedButton(
-                onClick = { modelImportLauncher.launch(arrayOf("*/*")) },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                border = BorderStroke(1.dp, AccentTeal)
-            ) {
-                Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (activeModelName != null) "Replace model file" else "Import .litertlm model")
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "Model file: google/gemma-4-on-device on Hugging Face → gemma-4-E2B-it.litertlm",
-            style = MaterialTheme.typography.labelSmall, color = c.textDisabled
-        )
-
-        SettingsDivider(c)
-
         // ── About ───────────────────────────────────────────────────────────
         Text("Pockets v1.0", style = MaterialTheme.typography.labelSmall, color = c.textDisabled)
         Text(
@@ -393,7 +297,6 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(32.dp))
     }
-    } // end Scaffold
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────

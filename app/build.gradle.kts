@@ -65,9 +65,6 @@ android {
 
     kotlinOptions {
         jvmTarget = "11"
-        // litertlm-android is compiled with newer Kotlin metadata;
-        // this flag lets KSP/Room proceed without version mismatch errors.
-        freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
 
     buildFeatures {
@@ -82,21 +79,6 @@ android {
             excludes += "/META-INF/LICENSE.txt"
             excludes += "/META-INF/NOTICE"
             excludes += "/META-INF/NOTICE.txt"
-        }
-    }
-}
-
-// litertlm-android ships with newer Kotlin stdlib metadata.
-// Force our Kotlin version throughout so the runtime classpath stays consistent.
-configurations.all {
-    resolutionStrategy {
-        force("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
-        force("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
-        dependencySubstitution {
-            substitute(module("org.jetbrains.kotlin:kotlin-stdlib-jdk8"))
-                .using(module("org.jetbrains.kotlin:kotlin-stdlib:2.0.21"))
-            substitute(module("org.jetbrains.kotlin:kotlin-stdlib-jdk7"))
-                .using(module("org.jetbrains.kotlin:kotlin-stdlib:2.0.21"))
         }
     }
 }
@@ -127,8 +109,9 @@ dependencies {
     // Jsoup
     implementation(libs.jsoup)
 
-    // LiteRT-LM — Gemma 4 E2B on-device inference (CPU only)
-    implementation(libs.litertlm.android)
+    // Baseline-profile installer — installs AndroidX/Compose AOT profiles so
+    // scrolling is smooth from first launch on release builds
+    implementation(libs.profileinstaller)
 
     // Chrome Custom Tabs
     implementation(libs.androidx.browser)

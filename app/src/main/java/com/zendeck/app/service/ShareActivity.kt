@@ -93,13 +93,16 @@ class ShareActivity : ComponentActivity() {
         app.applicationScope.launch {
             val prefs = app.dataStore.data.first()
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
-            val customPrompt = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
-            val modelPath = prefs[stringPreferencesKey("selected_model_path")]
-            val domain = extractDomain(url)
+            val focusHint = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
+
+            // Resolve wrappers first (share.google, search.app, g.co, google.com/url?q=,
+            // t.co, …) so we store, dedup, and scrape the REAL article URL.
+            val resolvedUrl = UrlResolverService.resolve(url)
+            val domain = extractDomain(resolvedUrl)
 
             // Save immediately with "pending" so the spinner shows in the card
             val (id, isNew) = repository.addLink(
-                url = url, title = domain, description = "", domain = domain,
+                url = resolvedUrl, title = domain, description = "", domain = domain,
                 faviconUrl = "", ttlHours = ttlHours, summaryStatus = "pending"
             )
             if (!isNew) {
@@ -111,37 +114,28 @@ class ShareActivity : ComponentActivity() {
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
             ZenDeckWidget.updateAll(applicationContext)
 
-            // Scrape metadata
-            val scraped = LinkScraperService.scrape(url)
+            // Scrape metadata from the resolved URL
+            val scraped = LinkScraperService.scrape(resolvedUrl)
             repository.updateLinkMetadata(id, scraped.title, scraped.description, scraped.domain, scraped.faviconUrl)
 
             if (scraped.bodyText.isNotBlank()) {
-                // Summarize: LLM with SummaryEngine fallback
-                val llm = LlmSummarizationService(applicationContext)
-                modelPath?.let { llm.setPreferredModelPath(it) }
-                val summary = llm.summarize(scraped.bodyText, customPrompt)
+                val summary = SummaryEngine.summarize(scraped.bodyText, focusHint = focusHint)
                 if (summary.isNotBlank()) {
                     repository.updateSummary(id, summary)
                     repository.updateSummaryStatus(id, "done")
                 } else {
                     repository.updateSummaryStatus(id, "unavailable")
                 }
-                // Generate AI tags, fall back to title heuristics
-                val aiTags = llm.generateTags(scraped.title, scraped.bodyText)
-                val finalTags = if (aiTags.isNotEmpty()) {
-                    aiTags.map { "llm:$it" }
-                } else {
-                    extractAutoTags(scraped.title)
-                }
-                if (finalTags.isNotEmpty()) {
+                val autoTags = extractAutoTags(scraped.title)
+                if (autoTags.isNotEmpty()) {
                     val current = repository.getTagsForLink(id)
                     val userTags = current.filter { !it.startsWith("auto:") && !it.startsWith("llm:") }
-                    repository.updateTags(id, userTags + finalTags)
+                    repository.updateTags(id, userTags + autoTags)
                 }
-                llm.close()
             } else {
                 repository.updateSummaryStatus(id, "unavailable")
             }
+            ZenDeckWidget.updateAll(applicationContext)
         }
     }
 
@@ -159,8 +153,7 @@ class ShareActivity : ComponentActivity() {
         app.applicationScope.launch {
             val prefs = app.dataStore.data.first()
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
-            val customPrompt = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
-            val modelPath = prefs[stringPreferencesKey("selected_model_path")]
+            val focusHint = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
 
             val (id, isNew) = repository.addLink(
                 url = syntheticUrl, title = title, description = text.take(1000),
@@ -176,16 +169,13 @@ class ShareActivity : ComponentActivity() {
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
 
             if (text.length >= 80) {
-                val llm = LlmSummarizationService(applicationContext)
-                modelPath?.let { llm.setPreferredModelPath(it) }
-                val summary = llm.summarize(text, customPrompt)
+                val summary = SummaryEngine.summarize(text, focusHint = focusHint)
                 if (summary.isNotBlank()) {
                     repository.updateSummary(id, summary)
                     repository.updateSummaryStatus(id, "done")
                 } else {
                     repository.updateSummaryStatus(id, "unavailable")
                 }
-                llm.close()
             } else {
                 // Short text — no summary needed, already stored as description
                 repository.updateSummaryStatus(id, "done")
@@ -198,7 +188,9 @@ class ShareActivity : ComponentActivity() {
     private fun extractUrl(text: String?): String? {
         if (text == null) return null
         val urlRegex = Regex("""https?://[^\s]+""")
-        return urlRegex.find(text)?.value ?: if (text.startsWith("http")) text else null
+        // Shared text often glues punctuation to the URL: "read this: https://x.y/z."
+        return urlRegex.find(text)?.value
+            ?.trimEnd('.', ',', ';', ')', ']', '>', '"', '\'', '!', '?')
     }
 
     private fun extractDomain(url: String): String {

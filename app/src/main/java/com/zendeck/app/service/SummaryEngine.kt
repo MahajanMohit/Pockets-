@@ -46,8 +46,12 @@ object SummaryEngine {
      * Summarize [text] into at most [maxBullets] bullet points.
      * Returns a newline-separated string of "• sentence" lines,
      * or "" if no meaningful sentences are found.
+     *
+     * [focusHint] — optional user hint ("technical details", "pricing", …);
+     * sentences containing hint words get a scoring boost so the summary
+     * leans toward what the user cares about.
      */
-    fun summarize(text: String, maxBullets: Int = 4): String {
+    fun summarize(text: String, maxBullets: Int = 4, focusHint: String = ""): String {
         if (text.isBlank()) return ""
 
         val sentences = splitSentences(text)
@@ -64,9 +68,19 @@ object SummaryEngine {
             .filter { it.length > 2 && it !in STOPWORDS }
         val wordFreq = allWords.groupingBy { it }.eachCount()
 
+        val focusWords = focusHint.lowercase()
+            .split(Regex("[^a-z0-9]+"))
+            .filter { it.length > 2 && it !in STOPWORDS }
+            .toSet()
+
         // Score each sentence and pick the best
         val scored = sentences.mapIndexed { idx, sentence ->
-            val score = score(sentence, idx, sentences.size, wordFreq)
+            var score = score(sentence, idx, sentences.size, wordFreq)
+            if (focusWords.isNotEmpty()) {
+                val lower = sentence.lowercase()
+                val hits = focusWords.count { lower.contains(it) }
+                if (hits > 0) score *= 1.0 + 0.5 * hits   // +50 % per focus word hit
+            }
             idx to score
         }
 

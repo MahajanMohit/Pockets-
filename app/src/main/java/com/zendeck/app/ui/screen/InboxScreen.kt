@@ -4,9 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +16,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.domain.model.LinkItem
 import com.zendeck.app.ui.components.LinkActionSheet
 import com.zendeck.app.ui.components.LinkCard
+import com.zendeck.app.ui.components.SearchField
 import com.zendeck.app.ui.components.TagEditDialog
 import com.zendeck.app.ui.theme.AccentTeal
 import com.zendeck.app.ui.theme.LocalZenDeckColors
@@ -88,37 +86,11 @@ fun InboxScreen(
         }
 
         // ── Search bar ────────────────────────────────────────────────────────
-        OutlinedTextField(
+        SearchField(
             value = searchQuery,
             onValueChange = { inboxViewModel.setInboxSearch(it) },
-            placeholder = {
-                Text("Search links…", color = c.textDisabled,
-                    style = MaterialTheme.typography.bodyMedium)
-            },
-            leadingIcon = {
-                Icon(Icons.Default.Search, contentDescription = null,
-                    tint = c.textDisabled, modifier = Modifier.size(20.dp))
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { inboxViewModel.setInboxSearch("") }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear",
-                            tint = c.textSecondary, modifier = Modifier.size(18.dp))
-                    }
-                }
-            },
-            singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentTeal,
-                unfocusedBorderColor = c.cardBorder,
-                focusedTextColor = c.textPrimary,
-                unfocusedTextColor = c.textPrimary,
-                cursorColor = AccentTeal
-            ),
-            shape = MaterialTheme.shapes.medium,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+            placeholder = "Search links…",
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
         // ── Content ───────────────────────────────────────────────────────────
@@ -142,7 +114,7 @@ fun InboxScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(links, key = { it.id }) { link ->
+                items(links, key = { it.id }, contentType = { it.contentType }) { link ->
                     val isExpanded = expandedLinkId == link.id
                     LinkCard(
                         link = link,
