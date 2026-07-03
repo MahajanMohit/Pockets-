@@ -72,14 +72,14 @@ fun InboxScreen(
             )
             if (activeLinkCount > 0) {
                 Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = AccentTeal.copy(alpha = 0.15f)
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                    color = AccentTeal.copy(alpha = 0.14f)
                 ) {
                     Text(
                         text = "$activeLinkCount",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = AccentTeal,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }

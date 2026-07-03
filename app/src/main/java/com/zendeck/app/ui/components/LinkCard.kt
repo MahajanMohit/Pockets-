@@ -85,8 +85,8 @@ fun LinkCard(
                 .then(if (isTextCard) Modifier.padding(start = 3.dp) else Modifier)
                 .border(
                     width = if (isExpanded) 1.5.dp else 1.dp,
-                    color = if (isExpanded) urgencyColor else urgencyColor.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(12.dp)
+                    color = if (isExpanded) urgencyColor else urgencyColor.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(16.dp)
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -98,7 +98,7 @@ fun LinkCard(
                         }
                     )
                 },
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = c.cardBackground)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -119,7 +119,7 @@ fun LinkCard(
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                                 .clickable {
                                     try {
                                         val uri = FileProvider.getUriForFile(
@@ -154,7 +154,7 @@ fun LinkCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
                     // ── Header: icon · domain · pin · TTL badge ────────────────
                     Row(
@@ -336,12 +336,12 @@ fun LinkCard(
 @Composable
 private fun DeletionBadge(countdown: String) {
     val c = LocalZenDeckColors.current
-    Surface(shape = RoundedCornerShape(4.dp), color = c.textDisabled.copy(alpha = 0.12f)) {
+    Surface(shape = RoundedCornerShape(50), color = c.textDisabled.copy(alpha = 0.12f)) {
         Text(
             text = countdown,
             style = MaterialTheme.typography.labelSmall,
             color = c.textDisabled,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
         )
     }
 }
@@ -349,24 +349,24 @@ private fun DeletionBadge(countdown: String) {
 @Composable
 private fun TTLBadge(urgencyFraction: Float, timeUntilExpiry: String) {
     val color = urgencyBorderColor(urgencyFraction)
-    Surface(shape = RoundedCornerShape(4.dp), color = color.copy(alpha = 0.15f)) {
+    Surface(shape = RoundedCornerShape(50), color = color.copy(alpha = 0.14f)) {
         Text(
             text = timeUntilExpiry,
             style = MaterialTheme.typography.labelSmall,
             color = color,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
         )
     }
 }
 
 @Composable
 private fun TagChip(tag: String) {
-    Surface(shape = RoundedCornerShape(4.dp), color = AccentTeal.copy(alpha = 0.12f)) {
+    Surface(shape = RoundedCornerShape(50), color = AccentTeal.copy(alpha = 0.12f)) {
         Text(
             text = "#$tag",
             style = MaterialTheme.typography.labelSmall,
             color = AccentTeal,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
         )
     }
 }
@@ -396,14 +396,14 @@ private fun SummaryStatusChip(status: String) {
         }
         "unavailable" -> {
             Surface(
-                shape = RoundedCornerShape(4.dp),
+                shape = RoundedCornerShape(50),
                 color = c.textDisabled.copy(alpha = 0.10f)
             ) {
                 Text(
                     text = "Summary unavailable",
                     style = MaterialTheme.typography.labelSmall,
                     color = c.textDisabled,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                 )
             }
         }

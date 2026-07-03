@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -22,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zendeck.app.ui.screen.ArchiveScreen
@@ -99,24 +101,27 @@ private fun ZenDeckApp(
         modifier = Modifier.fillMaxSize(),
         containerColor = c.background,
         bottomBar = {
-            NavigationBar(containerColor = c.background) {
-                Tab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = {
-                            previousOrdinal = selectedTab.ordinal
-                            selectedTab = tab
-                        },
-                        icon = { Icon(tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = AccentTeal,
-                            selectedTextColor = AccentTeal,
-                            unselectedIconColor = c.textSecondary,
-                            unselectedTextColor = c.textSecondary,
-                            indicatorColor = AccentTeal.copy(alpha = 0.12f)
+            Column {
+                HorizontalDivider(color = c.divider, thickness = 1.dp)
+                NavigationBar(containerColor = c.background, tonalElevation = 0.dp) {
+                    Tab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = {
+                                previousOrdinal = selectedTab.ordinal
+                                selectedTab = tab
+                            },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = AccentTeal,
+                                selectedTextColor = AccentTeal,
+                                unselectedIconColor = c.textDisabled,
+                                unselectedTextColor = c.textDisabled,
+                                indicatorColor = AccentTeal.copy(alpha = 0.14f)
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
