@@ -117,31 +117,45 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
     // ── Re-summarize ──────────────────────────────────────────────────────────
 
     /**
-     * Re-fetches the page and regenerates the summary with the on-device
-     * extractive engine. For notes, re-summarizes the stored text directly.
+     * Reloads a link: re-fetches the page (rendering JS-heavy sites in a
+     * headless WebView) and rebuilds the summary. This is what powers the
+     * "Reload content" action — the retry for cards that failed to parse.
+     * For notes, re-summarizes the stored text directly.
      */
     fun resummarizeLink(link: LinkItem) = viewModelScope.launch(Dispatchers.IO) {
         try {
             repo.updateSummaryStatus(link.id, "pending")
-            val sourceText = when (link.contentType) {
-                "link" -> {
-                    val scraped = LinkScraperService.scrape(link.url)
-                    if (scraped.title.isNotBlank() && scraped.title != link.domain) {
-                        repo.updateLinkMetadata(
-                            link.id, scraped.title, scraped.description,
-                            scraped.domain, scraped.faviconUrl
-                        )
-                    }
-                    scraped.bodyText
+            if (link.contentType != "link") {
+                val summary = if (link.description.isNotBlank())
+                    SummaryEngine.summarize(link.description) else ""
+                if (summary.isNotBlank()) {
+                    repo.updateSummary(link.id, summary)
+                    repo.updateSummaryStatus(link.id, "done")
+                } else {
+                    repo.updateSummaryStatus(link.id, if (link.description.isNotBlank()) "done" else "unavailable")
                 }
-                else -> link.description
+                return@launch
             }
-            val summary = if (sourceText.isNotBlank()) SummaryEngine.summarize(sourceText) else ""
-            if (summary.isNotBlank()) {
-                repo.updateSummary(link.id, summary)
-                repo.updateSummaryStatus(link.id, "done")
-            } else {
-                repo.updateSummaryStatus(link.id, "unavailable")
+
+            val scraped = LinkScraperService.scrape(link.url, getApplication())
+            if (scraped.title.isNotBlank() && scraped.title != link.domain) {
+                repo.updateLinkMetadata(
+                    link.id, scraped.title, scraped.description,
+                    scraped.domain, scraped.faviconUrl
+                )
+            }
+            when {
+                scraped.bodyText.isNotBlank() -> {
+                    val summary = SummaryEngine.summarize(scraped.bodyText)
+                    if (summary.isNotBlank()) {
+                        repo.updateSummary(link.id, summary)
+                        repo.updateSummaryStatus(link.id, "done")
+                    } else {
+                        repo.updateSummaryStatus(link.id, "unavailable")
+                    }
+                }
+                scraped.description.isNotBlank() -> repo.updateSummaryStatus(link.id, "done")
+                else -> repo.updateSummaryStatus(link.id, "unavailable")
             }
         } catch (e: Exception) {
             Log.w(TAG, "resummarizeLink failed: ${e.message}")

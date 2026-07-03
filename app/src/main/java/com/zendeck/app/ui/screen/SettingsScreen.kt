@@ -37,7 +37,6 @@ fun SettingsScreen(
     val darkMode     by viewModel.darkMode.collectAsStateWithLifecycle()
     val fontScale    by viewModel.fontScale.collectAsStateWithLifecycle()
     val lanRunning   by viewModel.lanServerRunning.collectAsStateWithLifecycle()
-    val customPrompt by viewModel.customSummaryPrompt.collectAsStateWithLifecycle()
     val c            = LocalZenDeckColors.current
     val clipboard    = LocalClipboardManager.current
 
@@ -149,59 +148,13 @@ fun SettingsScreen(
         SettingsDivider(c)
 
         // ── Summary ─────────────────────────────────────────────────────────
-        SectionHeader("Summary", c)
+        SectionHeader("Summaries", c)
         Text(
-            "Pockets extracts key sentences from any link, screenshot or note you share. " +
-            "No AI model required — works instantly on-device.",
+            "Every link, screenshot and note you share is summarised automatically, " +
+            "on-device — key sentences pulled out instantly, no AI model or internet " +
+            "needed. If a page fails to load, long-press its card and tap “Reload content” to retry.",
             style = MaterialTheme.typography.bodySmall, color = c.textSecondary
         )
-        Spacer(Modifier.height(16.dp))
-        Text(
-            "Custom focus hint (optional)",
-            style = MaterialTheme.typography.labelMedium, color = c.textPrimary
-        )
-        Text(
-            "Describe what to emphasise (e.g. \"technical details\" or \"business impact\"). " +
-            "Leave blank for balanced extraction.",
-            style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-        )
-        Spacer(Modifier.height(8.dp))
-
-        var promptDraft by remember(customPrompt) { mutableStateOf(customPrompt) }
-        OutlinedTextField(
-            value = promptDraft,
-            onValueChange = { promptDraft = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text(
-                    "e.g. Focus on key takeaways and practical steps.",
-                    style = MaterialTheme.typography.bodySmall, color = c.textSecondary
-                )
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentTeal,
-                unfocusedBorderColor = c.textSecondary.copy(alpha = 0.4f),
-                focusedTextColor = c.textPrimary,
-                unfocusedTextColor = c.textPrimary,
-                cursorColor = AccentTeal
-            ),
-            shape = RoundedCornerShape(10.dp),
-            minLines = 2, maxLines = 4
-        )
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = { viewModel.setCustomSummaryPrompt(promptDraft) },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentTeal),
-                border = BorderStroke(1.dp, AccentTeal)
-            ) { Text("Save") }
-            if (customPrompt.isNotBlank()) {
-                TextButton(onClick = {
-                    promptDraft = ""
-                    viewModel.setCustomSummaryPrompt("")
-                }) { Text("Reset", color = c.textSecondary) }
-            }
-        }
 
         SettingsDivider(c)
 

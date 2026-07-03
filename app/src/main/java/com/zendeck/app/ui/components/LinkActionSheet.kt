@@ -3,7 +3,6 @@ package com.zendeck.app.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -69,7 +68,7 @@ fun LinkActionSheet(
                 onEditTags(); onDismiss()
             }
             if (onResummarize != null) {
-                SheetAction(Icons.Outlined.AutoAwesome, "Regenerate Summary", AccentTeal) {
+                SheetAction(Icons.Default.Refresh, "Reload content", AccentTeal) {
                     onResummarize(); onDismiss()
                 }
             }

@@ -9,7 +9,6 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zendeck.app.ZenDeckApplication
@@ -31,11 +30,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val repo = LinkRepository.getInstance(application)
 
     companion object {
-        val KEY_TTL_HOURS     = longPreferencesKey("ttl_hours")
-        val KEY_DARK_MODE     = booleanPreferencesKey("dark_mode")
-        val KEY_CUSTOM_PROMPT = stringPreferencesKey("custom_summary_prompt")
-        val KEY_FONT_SCALE    = floatPreferencesKey("font_scale")
-        val TTL_OPTIONS       = listOf(24L, 48L, 72L, 168L)
+        val KEY_TTL_HOURS  = longPreferencesKey("ttl_hours")
+        val KEY_DARK_MODE  = booleanPreferencesKey("dark_mode")
+        val KEY_FONT_SCALE = floatPreferencesKey("font_scale")
+        val TTL_OPTIONS    = listOf(24L, 48L, 72L, 168L)
         private const val TAG = "SettingsViewModel"
     }
 
@@ -77,17 +75,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setFontScale(scale: Float) = viewModelScope.launch {
         dataStore.edit { prefs -> prefs[KEY_FONT_SCALE] = scale }
-    }
-
-    // ── Summary prompt ────────────────────────────────────────────────────────
-
-    /** Optional focus hint — SummaryEngine boosts sentences containing these words. */
-    val customSummaryPrompt: StateFlow<String> = dataStore.data
-        .map { prefs -> prefs[KEY_CUSTOM_PROMPT] ?: "" }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
-
-    fun setCustomSummaryPrompt(prompt: String) = viewModelScope.launch {
-        dataStore.edit { prefs -> prefs[KEY_CUSTOM_PROMPT] = prompt }
     }
 
     // ── Backup & Restore ──────────────────────────────────────────────────────

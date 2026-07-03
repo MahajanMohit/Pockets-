@@ -8,7 +8,6 @@ import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.datastore.preferences.core.longPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import com.zendeck.app.ZenDeckApplication
 import com.zendeck.app.data.repository.LinkRepository
 import com.zendeck.app.widget.ZenDeckWidget
@@ -93,7 +92,6 @@ class ShareActivity : ComponentActivity() {
         app.applicationScope.launch {
             val prefs = app.dataStore.data.first()
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
-            val focusHint = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
 
             // Resolve wrappers first (share.google, search.app, g.co, google.com/url?q=,
             // t.co, …) so we store, dedup, and scrape the REAL article URL.
@@ -114,26 +112,31 @@ class ShareActivity : ComponentActivity() {
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
             ZenDeckWidget.updateAll(applicationContext)
 
-            // Scrape metadata from the resolved URL
-            val scraped = LinkScraperService.scrape(resolvedUrl)
+            // Scrape the resolved URL. Pass a context so JS-heavy pages (MSN,
+            // Reddit, …) render in a headless WebView instead of failing.
+            val scraped = LinkScraperService.scrape(resolvedUrl, applicationContext)
             repository.updateLinkMetadata(id, scraped.title, scraped.description, scraped.domain, scraped.faviconUrl)
 
-            if (scraped.bodyText.isNotBlank()) {
-                val summary = SummaryEngine.summarize(scraped.bodyText, focusHint = focusHint)
-                if (summary.isNotBlank()) {
-                    repository.updateSummary(id, summary)
-                    repository.updateSummaryStatus(id, "done")
-                } else {
-                    repository.updateSummaryStatus(id, "unavailable")
+            when {
+                scraped.bodyText.isNotBlank() -> {
+                    val summary = SummaryEngine.summarize(scraped.bodyText)
+                    if (summary.isNotBlank()) {
+                        repository.updateSummary(id, summary)
+                        repository.updateSummaryStatus(id, "done")
+                    } else {
+                        repository.updateSummaryStatus(id, "unavailable")
+                    }
+                    val autoTags = extractAutoTags(scraped.title)
+                    if (autoTags.isNotEmpty()) {
+                        val current = repository.getTagsForLink(id)
+                        val userTags = current.filter { !it.startsWith("auto:") && !it.startsWith("llm:") }
+                        repository.updateTags(id, userTags + autoTags)
+                    }
                 }
-                val autoTags = extractAutoTags(scraped.title)
-                if (autoTags.isNotEmpty()) {
-                    val current = repository.getTagsForLink(id)
-                    val userTags = current.filter { !it.startsWith("auto:") && !it.startsWith("llm:") }
-                    repository.updateTags(id, userTags + autoTags)
-                }
-            } else {
-                repository.updateSummaryStatus(id, "unavailable")
+                // Short-form content (tweets, og:description) — the description
+                // itself is the takeaway, so don't flag it as "unavailable".
+                scraped.description.isNotBlank() -> repository.updateSummaryStatus(id, "done")
+                else -> repository.updateSummaryStatus(id, "unavailable")
             }
             ZenDeckWidget.updateAll(applicationContext)
         }
@@ -153,7 +156,6 @@ class ShareActivity : ComponentActivity() {
         app.applicationScope.launch {
             val prefs = app.dataStore.data.first()
             val ttlHours = prefs[longPreferencesKey("ttl_hours")] ?: 72L
-            val focusHint = prefs[stringPreferencesKey("custom_summary_prompt")] ?: ""
 
             val (id, isNew) = repository.addLink(
                 url = syntheticUrl, title = title, description = text.take(1000),
@@ -169,7 +171,7 @@ class ShareActivity : ComponentActivity() {
             mainHandler.post { Toast.makeText(applicationContext, "Saved ✓", Toast.LENGTH_SHORT).show() }
 
             if (text.length >= 80) {
-                val summary = SummaryEngine.summarize(text, focusHint = focusHint)
+                val summary = SummaryEngine.summarize(text)
                 if (summary.isNotBlank()) {
                     repository.updateSummary(id, summary)
                     repository.updateSummaryStatus(id, "done")

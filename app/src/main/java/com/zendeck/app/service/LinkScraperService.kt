@@ -1,7 +1,10 @@
 package com.zendeck.app.service
 
+import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.HttpURLConnection
@@ -18,20 +21,28 @@ data class ScrapedContent(
 )
 
 object LinkScraperService {
+    private const val TAG = "LinkScraperService"
     private const val BODY_TEXT_LIMIT = 4000
     private const val TIMEOUT_MS = 10_000
+    private const val USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
-    // Sites that require JavaScript or serve only boilerplate via Jsoup
-    // (YouTube and X have dedicated scrapers above and are not listed here)
+    // Sites that render content client-side — a plain Jsoup fetch only sees a
+    // shell, so we render them in a headless WebView instead (when a Context is
+    // available). YouTube and X have dedicated handlers and aren't listed here.
     private val KNOWN_JS_DOMAINS = setOf(
         "instagram.com", "threads.net",
         "facebook.com", "fb.com",
         "tiktok.com",
         "reddit.com", "redd.it",
-        "linkedin.com"
+        "linkedin.com",
+        "msn.com",
+        "medium.com",
+        "bloomberg.com",
     )
 
-    // Phrases that indicate the site requires JavaScript to render — Jsoup can't scrape these.
+    // Phrases that indicate the page needs JavaScript to render its content.
     private val JS_GATE_PHRASES = listOf(
         "javascript is disabled",
         "javascript is not enabled",
@@ -43,7 +54,14 @@ object LinkScraperService {
         "you need to enable javascript"
     )
 
-    suspend fun scrape(url: String): ScrapedContent = withContext(Dispatchers.IO) {
+    /**
+     * Scrapes [url] into a [ScrapedContent].
+     *
+     * When [context] is provided, JS-heavy pages that a plain fetch can't read
+     * are rendered in a headless WebView as a fallback — so sites like MSN,
+     * Reddit and Medium still produce a real summary.
+     */
+    suspend fun scrape(url: String, context: Context? = null): ScrapedContent = withContext(Dispatchers.IO) {
         val domain = extractDomain(url)
 
         // YouTube — use oEmbed API (reliable, no auth needed)
@@ -51,62 +69,44 @@ object LinkScraperService {
             return@withContext scrapeYouTube(url, domain)
         }
 
-        // X / Twitter — extract username from URL, try og:title via nitter fallback
+        // X / Twitter — real tweet text via the syndication API, og fallback
         if (domain == "x.com" || domain == "twitter.com" || domain.endsWith(".x.com")) {
             return@withContext scrapeXTwitter(url, domain)
+        }
+
+        // Known client-side-rendered domains: render first (Jsoup would only get boilerplate)
+        if (context != null && KNOWN_JS_DOMAINS.any { domain == it || domain.endsWith(".$it") }) {
+            renderAndExtract(context, url, domain)?.let { return@withContext it }
         }
 
         try {
             val doc = Jsoup.connect(url)
                 .timeout(TIMEOUT_MS)
-                // Pretend to be a real browser so more sites respond
-                .userAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
+                .userAgent(USER_AGENT)
                 .header("Accept-Language", "en-US,en;q=0.9")
                 .followRedirects(true)
                 .get()
 
             // Trust the URL we actually landed on: if the shared link was a
             // redirector we didn't recognise, doc.location() is the real site.
-            val finalDomain = extractDomain(doc.location().ifBlank { url })
-                .ifBlank { domain }
+            val finalDomain = extractDomain(doc.location().ifBlank { url }).ifBlank { domain }
+            val content = extractFromDocument(doc, finalDomain)
 
-            // Other known JS-heavy domains — Jsoup only gets homepage boilerplate, skip body
-            if (KNOWN_JS_DOMAINS.any { finalDomain == it || finalDomain.endsWith(".$it") }) {
-                val title = doc.select("meta[property=og:title]").attr("content")
-                    .ifBlank { doc.title() }.ifBlank { finalDomain }
-                val description = doc.select("meta[property=og:description]").attr("content")
-                return@withContext ScrapedContent(
-                    title = title,
-                    description = description,
-                    bodyText = "",
-                    domain = finalDomain,
-                    faviconUrl = "https://$finalDomain/favicon.ico"
-                )
+            // If the fetch couldn't produce real body text, try rendering with JS
+            if (content.bodyText.isBlank() && context != null) {
+                renderAndExtract(context, url, finalDomain)?.let { rendered ->
+                    if (rendered.bodyText.isNotBlank()) return@withContext rendered
+                    // Keep whichever has the better title/description
+                    return@withContext if (rendered.title.length > content.title.length) rendered else content
+                }
             }
-
-            val title = doc.select("meta[property=og:title]").attr("content").ifBlank {
-                doc.title()
-            }.ifBlank { finalDomain }
-            val description = doc.select("meta[name=description]").attr("content").ifBlank {
-                doc.select("meta[property=og:description]").attr("content")
-            }
-
-            val bodyText = extractMainContent(doc)
-
-            val faviconUrl = doc.select("link[rel~=(?i)icon]").firstOrNull()
-                ?.absUrl("href")
-                ?.ifBlank { null }
-                ?: "https://$finalDomain/favicon.ico"
-
-            ScrapedContent(
-                title = title,
-                description = description,
-                // Return empty bodyText for JS-gated pages so no garbage summary is generated
-                bodyText = if (isJsGated(bodyText)) "" else bodyText,
-                domain = finalDomain,
-                faviconUrl = faviconUrl
-            )
+            content
         } catch (e: Exception) {
+            Log.w(TAG, "Jsoup fetch failed for $url: ${e.message}")
+            // Blocked or network error — a WebView render may still succeed
+            if (context != null) {
+                renderAndExtract(context, url, domain)?.let { return@withContext it }
+            }
             ScrapedContent(
                 title = domain,
                 description = "",
@@ -115,6 +115,45 @@ object LinkScraperService {
                 faviconUrl = "https://$domain/favicon.ico"
             )
         }
+    }
+
+    /** Renders [url] in a headless WebView and extracts content from the result. */
+    private suspend fun renderAndExtract(context: Context, url: String, domain: String): ScrapedContent? {
+        val html = WebViewScraper.renderHtml(context, url) ?: return null
+        return try {
+            val doc = Jsoup.parse(html, url)
+            val content = extractFromDocument(doc, domain)
+            if (content.bodyText.isNotBlank() || content.description.isNotBlank()) content else null
+        } catch (e: Exception) {
+            Log.w(TAG, "parse of rendered HTML failed: ${e.message}")
+            null
+        }
+    }
+
+    /** Pulls title, description, body text and favicon out of a parsed document. */
+    private fun extractFromDocument(doc: Document, finalDomain: String): ScrapedContent {
+        val title = doc.select("meta[property=og:title]").attr("content").ifBlank {
+            doc.title()
+        }.ifBlank { finalDomain }
+
+        val description = doc.select("meta[name=description]").attr("content").ifBlank {
+            doc.select("meta[property=og:description]").attr("content")
+        }
+
+        val bodyText = extractMainContent(doc)
+
+        val faviconUrl = doc.select("link[rel~=(?i)icon]").firstOrNull()
+            ?.absUrl("href")
+            ?.ifBlank { null }
+            ?: "https://$finalDomain/favicon.ico"
+
+        return ScrapedContent(
+            title = title,
+            description = description,
+            bodyText = if (isJsGated(bodyText)) "" else bodyText,
+            domain = finalDomain,
+            faviconUrl = faviconUrl
+        )
     }
 
     /** Uses YouTube's public oEmbed API to get video title and channel name. */
@@ -148,37 +187,122 @@ object LinkScraperService {
         "notifications", "messages", "search", "settings", "compose"
     )
 
-    /** Extracts tweet author from the URL path; tries og:title via a simple HTTP fetch as well. */
+    /**
+     * Gets the real tweet via X's public syndication endpoint (the same one the
+     * embeddable-tweet widget uses — no login, no API key). Falls back to the
+     * Twitterbot og: tags, then to a username-only card.
+     */
     private fun scrapeXTwitter(url: String, domain: String): ScrapedContent {
-        // URL form: https://x.com/username/status/12345 or https://twitter.com/username/...
-        val username = try {
-            URI(url).path.split("/")
-                .firstOrNull { it.isNotBlank() && it.lowercase() !in X_SYSTEM_PATHS }
-        } catch (_: Exception) { null }
+        val tweetId = extractTweetId(url)
+        val username = extractXUsername(url)
 
-        // Try fetching og:title — X serves it to crawlers (without JS)
-        val ogTitle = try {
+        // 1. Syndication API — full tweet text + author
+        if (tweetId != null) {
+            fetchTweetSyndication(tweetId)?.let { return it }
+        }
+
+        // 2. Twitterbot og: fallback — X still serves these to crawler UAs
+        val (ogTitle, ogDescription) = try {
             val doc = Jsoup.connect(url)
                 .timeout(TIMEOUT_MS)
-                .userAgent("Twitterbot/1.0")  // X serves og tags to crawler UA
+                .userAgent("Twitterbot/1.0")
                 .followRedirects(true)
                 .get()
-            doc.select("meta[property=og:title]").attr("content")
+            val t = doc.select("meta[property=og:title]").attr("content")
                 .ifBlank { doc.select("meta[name=twitter:title]").attr("content") }
                 .ifBlank { null }
-        } catch (_: Exception) { null }
+            val d = doc.select("meta[property=og:description]").attr("content")
+                .ifBlank { doc.select("meta[name=twitter:description]").attr("content") }
+                .ifBlank { null }
+            t to d
+        } catch (_: Exception) { null to null }
 
         val title = ogTitle
-            ?: if (username != null) "Post by @$username"
-            else "Post on X"
+            ?: if (username != null) "Post by @$username" else "Post on X"
         return ScrapedContent(
             title = title,
-            description = "",
+            description = ogDescription ?: "",
             bodyText = "",
             domain = domain,
             faviconUrl = "https://x.com/favicon.ico"
         )
     }
+
+    /** Calls cdn.syndication.twimg.com for a single tweet's text + author. */
+    private fun fetchTweetSyndication(id: String): ScrapedContent? {
+        return try {
+            val token = syndicationToken(id)
+            val endpoint = "https://cdn.syndication.twimg.com/tweet-result?id=$id&token=$token&lang=en"
+            val conn = URL(endpoint).openConnection() as HttpURLConnection
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 8_000
+            conn.setRequestProperty("User-Agent", USER_AGENT)
+            conn.setRequestProperty("Accept", "application/json")
+            val body = if (conn.responseCode == 200) {
+                conn.inputStream.use { it.readBytes().decodeToString() }
+            } else ""
+            conn.disconnect()
+            if (body.isBlank()) return null
+
+            val json = JSONObject(body)
+            val text = json.optString("text").trim()
+            if (text.isBlank()) return null
+            val user = json.optJSONObject("user")
+            val name = user?.optString("name")?.ifBlank { null }
+            val screen = user?.optString("screen_name")?.ifBlank { null }
+
+            val title = when {
+                name != null && screen != null -> "$name (@$screen) on X"
+                screen != null -> "@$screen on X"
+                else -> "Post on X"
+            }
+            ScrapedContent(
+                title = title,
+                description = text,
+                bodyText = "",
+                domain = "x.com",
+                faviconUrl = "https://x.com/favicon.ico"
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "tweet syndication failed for $id: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Reproduces the token the syndication endpoint expects, derived from the
+     * tweet id (same algorithm the official embed widget uses):
+     * base-36 of `(id / 1e15) * PI`, with zeros and the dot stripped.
+     */
+    private fun syndicationToken(id: String): String {
+        return try {
+            val value = (id.toDouble() / 1e15) * Math.PI
+            val sb = StringBuilder()
+            val intPart = value.toLong()
+            sb.append(intPart.toString(36))
+            var frac = value - intPart
+            sb.append('.')
+            var guard = 0
+            while (frac > 0.0 && guard < 24) {
+                frac *= 36
+                val digit = frac.toInt()
+                sb.append(digit.toString(36))
+                frac -= digit
+                guard++
+            }
+            sb.toString().replace(Regex("(0+|\\.)"), "").ifBlank { "a" }
+        } catch (_: Exception) {
+            "a"
+        }
+    }
+
+    private fun extractTweetId(url: String): String? =
+        Regex("""/status(?:es)?/(\d+)""").find(url)?.groupValues?.get(1)
+
+    private fun extractXUsername(url: String): String? = try {
+        URI(url).path.split("/")
+            .firstOrNull { it.isNotBlank() && it.lowercase() !in X_SYSTEM_PATHS }
+    } catch (_: Exception) { null }
 
     /** Extracts a string field from a flat JSON object using regex (avoids extra deps). */
     private fun jsonField(json: String, key: String): String? =
@@ -232,6 +356,7 @@ object LinkScraperService {
      * In that case we skip summary generation entirely.
      */
     private fun isJsGated(text: String): Boolean {
+        if (text.length > 400) return false   // real content present; ignore stray mentions
         val lower = text.lowercase()
         return JS_GATE_PHRASES.any { lower.contains(it) }
     }
