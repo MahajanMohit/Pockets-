@@ -30,7 +30,7 @@ fun LinkActionSheet(
     val c = LocalZenDeckColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = c.cardBackground,
+        containerColor = c.sheetBackground,
         dragHandle = {
             Box(
                 modifier = Modifier

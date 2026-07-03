@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -30,6 +32,7 @@ import com.zendeck.app.ui.screen.ArchiveScreen
 import com.zendeck.app.ui.screen.InboxScreen
 import com.zendeck.app.ui.screen.SettingsScreen
 import com.zendeck.app.ui.theme.AccentTeal
+import com.zendeck.app.ui.theme.GlassBackground
 import com.zendeck.app.ui.theme.LocalZenDeckColors
 import com.zendeck.app.ui.theme.ZenDeckTheme
 import com.zendeck.app.ui.viewmodel.SettingsViewModel
@@ -58,10 +61,13 @@ class MainActivity : ComponentActivity() {
             val fontScale by settingsViewModel.fontScale.collectAsStateWithLifecycle()
             val pendingLinkId by _pendingLinkId.asStateFlow().collectAsStateWithLifecycle()
             ZenDeckTheme(useDarkTheme = darkMode, fontScale = fontScale) {
-                ZenDeckApp(
-                    pendingLinkId = pendingLinkId,
-                    onLinkIdConsumed = { _pendingLinkId.value = null }
-                )
+                Box(Modifier.fillMaxSize()) {
+                    GlassBackground(darkTheme = darkMode)
+                    ZenDeckApp(
+                        pendingLinkId = pendingLinkId,
+                        onLinkIdConsumed = { _pendingLinkId.value = null }
+                    )
+                }
             }
         }
     }
@@ -99,11 +105,11 @@ private fun ZenDeckApp(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = c.background,
+        containerColor = Color.Transparent,
         bottomBar = {
             Column {
                 HorizontalDivider(color = c.divider, thickness = 1.dp)
-                NavigationBar(containerColor = c.background, tonalElevation = 0.dp) {
+                NavigationBar(containerColor = c.navBackground, tonalElevation = 0.dp) {
                     Tab.entries.forEach { tab ->
                         NavigationBarItem(
                             selected = selectedTab == tab,

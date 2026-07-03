@@ -31,7 +31,7 @@ fun TagEditDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = c.cardBackground,
+        containerColor = c.sheetBackground,
         titleContentColor = c.textPrimary,
         textContentColor = c.textSecondary,
         title = {
