@@ -6,7 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -135,16 +136,24 @@ private fun ZenDeckApp(
         AnimatedContent(
             targetState = selectedTab,
             transitionSpec = {
+                // Spring-driven, Apple-style: short travel, no fixed duration,
+                // fully interruptible — rapid tab taps retain their velocity.
                 val slideDir = if (targetState.ordinal > previousOrdinal) 1 else -1
                 (slideInHorizontally(
-                    initialOffsetX = { w -> w * slideDir / 4 },
-                    animationSpec = tween(300)
-                ) + fadeIn(animationSpec = tween(300)))
+                    initialOffsetX = { w -> w * slideDir / 8 },
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = 380f
+                    )
+                ) + fadeIn(animationSpec = spring(stiffness = 600f)))
                     .togetherWith(
                         slideOutHorizontally(
-                            targetOffsetX = { w -> -w * slideDir / 4 },
-                            animationSpec = tween(300)
-                        ) + fadeOut(animationSpec = tween(200))
+                            targetOffsetX = { w -> -w * slideDir / 8 },
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = 380f
+                            )
+                        ) + fadeOut(animationSpec = spring(stiffness = 900f))
                     )
             },
             label = "tab_transition"

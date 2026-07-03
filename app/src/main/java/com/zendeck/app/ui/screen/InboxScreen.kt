@@ -118,6 +118,7 @@ fun InboxScreen(
                     val isExpanded = expandedLinkId == link.id
                     LinkCard(
                         link = link,
+                        modifier = Modifier.animateItem(),
                         isExpanded = isExpanded,
                         onTap = {
                             expandedLinkId = if (isExpanded) null else link.id

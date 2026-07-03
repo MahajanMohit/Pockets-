@@ -3,8 +3,8 @@ package com.zendeck.app.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,11 +23,15 @@ import androidx.compose.material.icons.outlined.TextSnippet
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -64,11 +68,28 @@ fun LinkCard(
     // live animation object per visible card costs frames during scroll
     val urgencyColor = urgencyBorderColor(link.urgencyFraction)
 
+    // Tactile press feedback: card compresses under the finger and springs
+    // back on release. Scale is read inside graphicsLayer (draw phase only),
+    // so the animation never triggers recomposition or relayout.
+    var pressed by remember { mutableStateOf(false) }
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.972f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 480f),
+        label = "press_scale"
+    )
+
     val isTextCard = link.contentType == "text"
     val hasImage = link.contentType == "image" && link.localImagePath.isNotBlank()
 
     // For TEXT cards, wrap card in a Box with a left accent bar
-    Box(modifier = modifier.fillMaxWidth()) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+    ) {
         if (isTextCard) {
             Box(
                 modifier = Modifier
@@ -90,6 +111,11 @@ fun LinkCard(
                 )
                 .pointerInput(Unit) {
                     detectTapGestures(
+                        onPress = {
+                            pressed = true
+                            tryAwaitRelease()
+                            pressed = false
+                        },
                         onTap = { currentOnTap() },
                         onDoubleTap = { currentOnDoubleTap() },
                         onLongPress = {
@@ -107,7 +133,7 @@ fun LinkCard(
                 if (hasImage) {
                     val imageHeight by animateDpAsState(
                         targetValue = if (isExpanded) 180.dp else 72.dp,
-                        animationSpec = tween(300),
+                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 420f),
                         label = "img_h"
                     )
                     Box(modifier = Modifier.fillMaxWidth().height(imageHeight)) {
@@ -255,12 +281,11 @@ fun LinkCard(
                     AnimatedVisibility(
                         visible = isExpanded,
                         enter = expandVertically(
-                            spring(
-                                stiffness = Spring.StiffnessMedium,
-                                dampingRatio = Spring.DampingRatioLowBouncy
-                            )
-                        ) + fadeIn(tween(200)),
-                        exit = shrinkVertically(tween(200)) + fadeOut(tween(150))
+                            spring(dampingRatio = 0.85f, stiffness = 420f)
+                        ) + fadeIn(spring(stiffness = 700f)),
+                        exit = shrinkVertically(
+                            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 550f)
+                        ) + fadeOut(spring(stiffness = 1200f))
                     ) {
                         Column {
                             Spacer(Modifier.height(10.dp))
